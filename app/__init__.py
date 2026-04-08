@@ -24,9 +24,7 @@ def create_app(config_name=None):
     else:
         app.config.from_object("config.DevelopmentConfig")
 
-    # Use Flask-Session for local dev (filesystem), skip for production (use signed cookies)
-    if app.config.get("SESSION_TYPE") and app.config["SESSION_TYPE"] != "null":
-        Session(app)
+    Session(app)
     csrf.init_app(app)
 
     from app.auth.google_auth import google_auth_bp

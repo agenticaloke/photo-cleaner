@@ -15,7 +15,18 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // First, kick off the scan
+    const progress = document.getElementById('scan-progress');
+    const statusText = document.getElementById('status-text');
+    const detail = document.getElementById('progress-detail');
+
+    const stageLabels = {
+        'starting': 'Starting scan...',
+        'listing': 'Listing photos from cloud storage...',
+        'exact_matching': 'Finding exact duplicates...',
+        'hashing': 'Analyzing photos for visual similarity...',
+    };
+
+    // Start the scan
     fetch('{{ url_for("web.scan_start") }}', {
         method: 'POST',
         headers: {
@@ -24,56 +35,50 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         body: 'threshold=10'
     })
-    .then(response => response.json())
-    .then(data => {
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
         if (data.error) {
-            document.getElementById('status-text').textContent = 'Error: ' + data.error;
+            statusText.textContent = 'Error: ' + data.error;
             return;
         }
-        // Now listen for progress via SSE
-        const evtSource = new EventSource('{{ url_for("web.scan_progress") }}');
-        const progress = document.getElementById('scan-progress');
-        const statusText = document.getElementById('status-text');
-        const detail = document.getElementById('progress-detail');
+        // Poll for progress every 2 seconds
+        pollProgress();
+    })
+    .catch(function(err) {
+        statusText.textContent = 'Failed to start scan: ' + err;
+    });
 
-        const stageLabels = {
-            'starting': 'Starting scan...',
-            'listing': 'Listing photos from cloud storage...',
-            'exact_matching': 'Finding exact duplicates...',
-            'hashing': 'Analyzing photos for visual similarity...',
-        };
-
-        evtSource.onmessage = function(event) {
-            const d = JSON.parse(event.data);
-
+    function pollProgress() {
+        fetch('{{ url_for("web.scan_progress") }}')
+        .then(function(response) { return response.json(); })
+        .then(function(d) {
             statusText.textContent = stageLabels[d.stage] || d.stage;
 
             if (d.total > 0) {
-                const pct = Math.round((d.current / d.total) * 100);
+                var pct = Math.round((d.current / d.total) * 100);
                 progress.value = pct;
                 detail.textContent = d.current + ' / ' + d.total + ' photos processed';
             }
 
             if (d.done) {
-                evtSource.close();
                 window.location.href = '{{ url_for("web.results") }}';
+                return;
             }
 
             if (d.error) {
-                evtSource.close();
                 statusText.textContent = 'Error: ' + d.error;
                 detail.textContent = 'Please try again.';
+                return;
             }
-        };
 
-        evtSource.onerror = function() {
-            evtSource.close();
-            statusText.textContent = 'Connection lost. Please refresh.';
-        };
-    })
-    .catch(err => {
-        document.getElementById('status-text').textContent = 'Failed to start scan: ' + err;
-    });
+            // Poll again in 2 seconds
+            setTimeout(pollProgress, 2000);
+        })
+        .catch(function() {
+            // Retry on network error
+            setTimeout(pollProgress, 3000);
+        });
+    }
 });
 </script>
 {% endblock %}

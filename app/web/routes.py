@@ -3,14 +3,13 @@ import threading
 
 from flask import (
     Blueprint, render_template, redirect, url_for, session,
-    request, Response, stream_with_context, jsonify,
+    request, Response, jsonify,
 )
 
 from app.cloud.google_drive import GoogleDriveProvider
 from app.cloud.onedrive import OneDriveProvider
 from app.core.grouper import scan_for_duplicates
 from app.core.models import ScanResult
-from app.web.sse import generate_progress_events
 
 web_bp = Blueprint("web", __name__)
 
@@ -55,16 +54,6 @@ def scan():
     providers = _get_providers()
     if not providers:
         return redirect(url_for("web.index"))
-
-    # Initialize progress dict in session
-    session["scan_progress"] = {
-        "stage": "starting",
-        "current": 0,
-        "total": 0,
-        "done": False,
-        "error": None,
-    }
-
     return render_template("scanning.html")
 
 
@@ -77,8 +66,6 @@ def scan_start():
 
     threshold = request.form.get("threshold", 10, type=int)
 
-    # Store scan config so progress endpoint can access it
-    # We use a module-level dict keyed by a scan ID
     import secrets
     scan_id = secrets.token_urlsafe(16)
     session["scan_id"] = scan_id
@@ -121,17 +108,19 @@ _active_scans = {}
 
 @web_bp.route("/scan/progress")
 def scan_progress():
-    """SSE endpoint streaming scan progress."""
+    """Polling endpoint that returns current scan progress as JSON."""
     scan_id = session.get("scan_id")
     if not scan_id or scan_id not in _active_scans:
-        return Response("data: {\"error\": \"No active scan\"}\n\n",
-                        mimetype="text/event-stream")
+        return jsonify({"error": "No active scan"})
 
     progress = _active_scans[scan_id]["progress"]
-    return Response(
-        stream_with_context(generate_progress_events(progress)),
-        mimetype="text/event-stream",
-    )
+    return jsonify({
+        "stage": progress.get("stage", "starting"),
+        "current": progress.get("current", 0),
+        "total": progress.get("total", 0),
+        "done": progress.get("done", False),
+        "error": progress.get("error"),
+    })
 
 
 @web_bp.route("/results")
@@ -164,7 +153,6 @@ def delete():
     providers = _get_providers()
     provider_map = {p.provider_name: p for p in providers}
 
-    # Get the scan result to look up file metadata
     scan_id = session.get("scan_id")
     result = _active_scans.get(scan_id, {}).get("result") if scan_id else None
 

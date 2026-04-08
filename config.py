@@ -30,7 +30,8 @@ class DevelopmentConfig(BaseConfig):
 
 class ProductionConfig(BaseConfig):
     DEBUG = False
-    SESSION_TYPE = "null"  # Use Flask's built-in signed cookie sessions
+    SESSION_TYPE = "filesystem"
+    SESSION_FILE_DIR = "/tmp/flask_session"
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
@@ -40,3 +41,5 @@ class TestingConfig(BaseConfig):
     TESTING = True
     WTF_CSRF_ENABLED = False
     SECRET_KEY = "test-secret-key"
+    SESSION_TYPE = "filesystem"
+    SESSION_FILE_DIR = "/tmp/flask_session_test"
