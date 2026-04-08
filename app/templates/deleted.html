@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Done — Photo Cleaner{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Cleanup Complete</h1>
+    <p>Your duplicate photos have been moved to trash.</p>
+</hgroup>
+
+<article>
+    <p><strong>{{ deleted }}</strong> files moved to trash</p>
+    {% if failed > 0 %}
+    <p><strong>{{ failed }}</strong> files could not be deleted (check permissions)</p>
+    {% endif %}
+    <p>Space freed: <strong>{{ space_freed|filesize }}</strong></p>
+    <p><small>Files are in your cloud provider's trash/recycle bin. You can restore them if needed.</small></p>
+</article>
+
+<a href="{{ url_for('web.index') }}" role="button">Scan Again</a>
+{% endblock %}

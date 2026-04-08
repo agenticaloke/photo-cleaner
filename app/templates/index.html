@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Photo Cleaner — Find & Remove Duplicate Photos{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Duplicate Photo Cleaner</h1>
+    <p>Connect your cloud storage, find duplicates, and free up space.</p>
+</hgroup>
+
+<section>
+    <h2>1. Connect Your Accounts</h2>
+    <div class="grid">
+        <article>
+            <header>Google Drive</header>
+            {% if google_connected %}
+                <p><span class="badge-connected">Connected</span></p>
+                <a href="{{ url_for('google_auth.logout') }}" role="button" class="outline secondary">Disconnect</a>
+            {% else %}
+                <p>Scan photos stored in your Google Drive.</p>
+                <a href="{{ url_for('google_auth.login') }}" role="button">Connect Google Drive</a>
+            {% endif %}
+        </article>
+
+        <article>
+            <header>OneDrive</header>
+            <p>Coming Soon</p>
+            <button disabled>Connect OneDrive</button>
+        </article>
+    </div>
+</section>
+
+{% if google_connected or ms_connected %}
+<section>
+    <h2>2. Scan for Duplicates</h2>
+    <p>We'll compare your photos using file fingerprints and visual similarity. No photos are stored on our server.</p>
+
+    <details>
+        <summary>Advanced settings</summary>
+        <label for="threshold">
+            Sensitivity
+            <small>(lower = stricter matching, higher = catches more similar photos)</small>
+        </label>
+        <input type="range" id="threshold" name="threshold" min="4" max="20" value="10">
+        <small>Current: <span id="threshold-value">10</span></small>
+    </details>
+
+    <a href="{{ url_for('web.scan') }}" role="button" class="contrast" id="scan-btn">
+        Scan for Duplicates
+    </a>
+</section>
+{% endif %}
+
+<section>
+    <h2>How It Works</h2>
+    <div class="grid">
+        <div>
+            <h3>Safe</h3>
+            <p>Deleted photos go to your cloud trash — you can always restore them.</p>
+        </div>
+        <div>
+            <h3>Smart</h3>
+            <p>Finds both exact copies and visually similar photos (resized, recompressed).</p>
+        </div>
+        <div>
+            <h3>Fast</h3>
+            <p>Uses cloud metadata for matching — no need to download all your photos.</p>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const slider = document.getElementById('threshold');
+    const display = document.getElementById('threshold-value');
+    if (slider && display) {
+        slider.addEventListener('input', () => { display.textContent = slider.value; });
+    }
+</script>
+{% endblock %}

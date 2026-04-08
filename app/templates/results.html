@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Results — Photo Cleaner{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Scan Results</h1>
+    <p>Found {{ result.exact_groups|length + result.similar_groups|length }} duplicate groups
+       in {{ result.total_photos }} photos.
+       Potential space savings: <strong>{{ result.space_recoverable|filesize }}</strong></p>
+</hgroup>
+
+{% if not result.exact_groups and not result.similar_groups %}
+<article>
+    <p>No duplicates found. Your photo library is clean!</p>
+    <a href="{{ url_for('web.index') }}" role="button">Back to Home</a>
+</article>
+{% else %}
+
+<form method="POST" action="{{ url_for('web.delete') }}" id="delete-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {% if result.exact_groups %}
+    <h2>Exact Duplicates</h2>
+    <p><small>These files are byte-for-byte identical.</small></p>
+
+    {% for group in result.exact_groups %}
+    <article class="duplicate-group">
+        <header>
+            Group {{ group.group_id }} — {{ group.files|length }} identical files
+        </header>
+        <div class="photo-grid">
+            {% for file in group.files %}
+            <div class="photo-card">
+                <img src="{{ url_for('web.thumbnail', provider=file.provider, file_id=file.file_id) }}"
+                     alt="{{ file.name }}" loading="lazy">
+                <div class="photo-info">
+                    <strong>{{ file.name }}</strong><br>
+                    <small>{{ file.size|filesize }} &middot;
+                    {{ file.provider|replace('_', ' ')|title }}</small><br>
+                    {% if file.file_id == group.suggested_keep.file_id %}
+                        <span class="badge-keep">KEEP</span>
+                    {% else %}
+                        <label>
+                            <input type="checkbox" name="file_ids" value="{{ file.file_id }}" checked>
+                            Delete
+                        </label>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+    {% endfor %}
+    {% endif %}
+
+    {% if result.similar_groups %}
+    <h2>Visually Similar</h2>
+    <p><small>These photos look alike but aren't byte-identical (resized, recompressed, etc.).</small></p>
+
+    {% for group in result.similar_groups %}
+    <article class="duplicate-group">
+        <header>
+            Group {{ group.group_id }} — {{ group.files|length }} similar files
+        </header>
+        <div class="photo-grid">
+            {% for file in group.files %}
+            <div class="photo-card">
+                <img src="{{ url_for('web.thumbnail', provider=file.provider, file_id=file.file_id) }}"
+                     alt="{{ file.name }}" loading="lazy">
+                <div class="photo-info">
+                    <strong>{{ file.name }}</strong><br>
+                    <small>{{ file.size|filesize }} &middot;
+                    {{ file.provider|replace('_', ' ')|title }}</small><br>
+                    {% if file.file_id == group.suggested_keep.file_id %}
+                        <span class="badge-keep">KEEP</span>
+                    {% else %}
+                        <label>
+                            <input type="checkbox" name="file_ids" value="{{ file.file_id }}" checked>
+                            Delete
+                        </label>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </article>
+    {% endfor %}
+    {% endif %}
+
+    <div class="action-bar">
+        <p>
+            <strong id="selected-count">0</strong> files selected for deletion
+            (<span id="selected-size">0 B</span>)
+        </p>
+        <button type="submit" class="contrast" onclick="return confirm('Move selected files to trash? You can restore them from your cloud trash.')">
+            Move to Trash
+        </button>
+    </div>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('delete-form');
+    if (!form) return;
+
+    function updateCount() {
+        const checked = form.querySelectorAll('input[name="file_ids"]:checked');
+        document.getElementById('selected-count').textContent = checked.length;
+    }
+
+    form.addEventListener('change', updateCount);
+    updateCount();
+});
+</script>
+{% endblock %}

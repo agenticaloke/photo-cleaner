@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Scanning... — Photo Cleaner{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Scanning Your Photos</h1>
+    <p id="status-text">Starting scan...</p>
+</hgroup>
+
+<progress id="scan-progress" value="0" max="100"></progress>
+<p><small id="progress-detail">Preparing...</small></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // First, kick off the scan
+    fetch('{{ url_for("web.scan_start") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        },
+        body: 'threshold=10'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            document.getElementById('status-text').textContent = 'Error: ' + data.error;
+            return;
+        }
+        // Now listen for progress via SSE
+        const evtSource = new EventSource('{{ url_for("web.scan_progress") }}');
+        const progress = document.getElementById('scan-progress');
+        const statusText = document.getElementById('status-text');
+        const detail = document.getElementById('progress-detail');
+
+        const stageLabels = {
+            'starting': 'Starting scan...',
+            'listing': 'Listing photos from cloud storage...',
+            'exact_matching': 'Finding exact duplicates...',
+            'hashing': 'Analyzing photos for visual similarity...',
+        };
+
+        evtSource.onmessage = function(event) {
+            const d = JSON.parse(event.data);
+
+            statusText.textContent = stageLabels[d.stage] || d.stage;
+
+            if (d.total > 0) {
+                const pct = Math.round((d.current / d.total) * 100);
+                progress.value = pct;
+                detail.textContent = d.current + ' / ' + d.total + ' photos processed';
+            }
+
+            if (d.done) {
+                evtSource.close();
+                window.location.href = '{{ url_for("web.results") }}';
+            }
+
+            if (d.error) {
+                evtSource.close();
+                statusText.textContent = 'Error: ' + d.error;
+                detail.textContent = 'Please try again.';
+            }
+        };
+
+        evtSource.onerror = function() {
+            evtSource.close();
+            statusText.textContent = 'Connection lost. Please refresh.';
+        };
+    })
+    .catch(err => {
+        document.getElementById('status-text').textContent = 'Failed to start scan: ' + err;
+    });
+});
+</script>
+{% endblock %}

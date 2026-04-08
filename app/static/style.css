@@ -1,0 +1,63 @@
+.badge-connected {
+    background-color: #43a047;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75em;
+}
+
+.badge-keep {
+    background-color: #1976d2;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75em;
+    font-weight: bold;
+}
+
+.photo-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.photo-card {
+    flex: 0 0 auto;
+    width: 180px;
+    text-align: center;
+}
+
+.photo-card img {
+    width: 160px;
+    height: 160px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid var(--pico-muted-border-color);
+}
+
+.photo-info {
+    margin-top: 0.5rem;
+    font-size: 0.85em;
+    word-break: break-all;
+}
+
+.duplicate-group {
+    margin-bottom: 1.5rem;
+}
+
+.action-bar {
+    position: sticky;
+    bottom: 0;
+    background: var(--pico-background-color);
+    padding: 1rem 0;
+    border-top: 1px solid var(--pico-muted-border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+footer {
+    margin-top: 3rem;
+    text-align: center;
+    opacity: 0.6;
+}

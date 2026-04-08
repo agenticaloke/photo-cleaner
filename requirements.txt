@@ -1,0 +1,11 @@
+Flask>=3.0,<4.0
+Flask-Session>=0.8,<1.0
+Flask-WTF>=1.2,<2.0
+google-auth-oauthlib>=1.2,<2.0
+google-api-python-client>=2.100,<3.0
+msal>=1.28,<2.0
+requests>=2.31,<3.0
+imagehash>=4.3,<5.0
+Pillow>=10.0,<12.0
+python-dotenv>=1.0,<2.0
+gunicorn>=22.0,<23.0
