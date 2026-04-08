@@ -3,10 +3,6 @@ import os
 
 class BaseConfig:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key-change-in-production")
-    SESSION_TYPE = "filesystem"
-    SESSION_FILE_DIR = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "flask_session"
-    )
     SESSION_PERMANENT = False
 
     GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -26,10 +22,15 @@ class BaseConfig:
 
 class DevelopmentConfig(BaseConfig):
     DEBUG = True
+    SESSION_TYPE = "filesystem"
+    SESSION_FILE_DIR = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "flask_session"
+    )
 
 
 class ProductionConfig(BaseConfig):
     DEBUG = False
+    SESSION_TYPE = "null"  # Use Flask's built-in signed cookie sessions
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
