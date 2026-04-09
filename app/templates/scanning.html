@@ -62,7 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             if (d.done) {
-                window.location.href = '{{ url_for("web.results") }}';
+                window.location.href = '{{ url_for("web.results") }}?scan_id=' + scanId;
                 return;
             }
 

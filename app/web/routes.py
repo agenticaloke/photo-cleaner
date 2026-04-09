@@ -1,5 +1,8 @@
 import json
+import os
 import threading
+import tempfile
+import shutil
 
 from flask import (
     Blueprint, render_template, redirect, url_for, session,
@@ -12,6 +15,13 @@ from app.core.grouper import scan_for_duplicates
 from app.core.models import ScanResult
 
 web_bp = Blueprint("web", __name__)
+
+# Store scan results in memory (keyed by scan_id)
+_scan_results = {}
+
+# Directory for scan progress files
+PROGRESS_DIR = os.path.join(tempfile.gettempdir(), "photocleaner-progress")
+os.makedirs(PROGRESS_DIR, exist_ok=True)
 
 
 def _get_providers():
@@ -31,6 +41,30 @@ def _format_size(bytes_val):
             return f"{bytes_val:.1f} {unit}"
         bytes_val /= 1024
     return f"{bytes_val:.1f} TB"
+
+
+def _write_progress(scan_id, stage="starting", current=0, total=0, done=False, error=None):
+    """Write scan progress to a file in /tmp."""
+    data = {
+        "stage": stage,
+        "current": current,
+        "total": total,
+        "done": done,
+        "error": error,
+    }
+    path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+
+def _read_progress(scan_id):
+    """Read scan progress from file."""
+    path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
 
 
 @web_bp.app_template_filter("filesize")
@@ -70,31 +104,19 @@ def scan_start():
     scan_id = secrets.token_urlsafe(16)
     session["scan_id"] = scan_id
 
-    _active_scans[scan_id] = {
-        "progress": {
-            "stage": "starting",
-            "current": 0,
-            "total": 0,
-            "done": False,
-            "error": None,
-        },
-        "result": None,
-    }
+    # Write initial progress file
+    _write_progress(scan_id, stage="starting")
 
     def run_scan():
-        progress = _active_scans[scan_id]["progress"]
-
         def progress_callback(stage, current, total):
-            progress["stage"] = stage
-            progress["current"] = current
-            progress["total"] = total
+            _write_progress(scan_id, stage=stage, current=current, total=total)
 
         try:
             result = scan_for_duplicates(providers, threshold, progress_callback)
-            _active_scans[scan_id]["result"] = result
-            progress["done"] = True
+            _scan_results[scan_id] = result
+            _write_progress(scan_id, stage="done", current=100, total=100, done=True)
         except Exception as e:
-            progress["error"] = str(e)
+            _write_progress(scan_id, error=str(e))
 
     thread = threading.Thread(target=run_scan, daemon=True)
     thread.start()
@@ -102,43 +124,33 @@ def scan_start():
     return jsonify({"scan_id": scan_id})
 
 
-# Module-level storage for active scans (in-memory, suitable for single-server)
-_active_scans = {}
-
-
 @web_bp.route("/scan/progress")
 def scan_progress():
     """Polling endpoint that returns current scan progress as JSON."""
-    # Accept scan_id from query param (reliable) or session (fallback)
     scan_id = request.args.get("scan_id") or session.get("scan_id")
-    if not scan_id or scan_id not in _active_scans:
+    if not scan_id:
         return jsonify({"error": "No active scan"})
 
-    progress = _active_scans[scan_id]["progress"]
-    return jsonify({
-        "stage": progress.get("stage", "starting"),
-        "current": progress.get("current", 0),
-        "total": progress.get("total", 0),
-        "done": progress.get("done", False),
-        "error": progress.get("error"),
-    })
+    progress = _read_progress(scan_id)
+    if not progress:
+        return jsonify({"error": "No active scan"})
+
+    return jsonify(progress)
 
 
 @web_bp.route("/results")
 def results():
     """Show duplicate groups found by the scan."""
-    scan_id = session.get("scan_id")
-    if not scan_id or scan_id not in _active_scans:
+    scan_id = request.args.get("scan_id") or session.get("scan_id")
+    if not scan_id or scan_id not in _scan_results:
         return redirect(url_for("web.index"))
 
-    scan_data = _active_scans[scan_id]
-    result = scan_data.get("result")
-    if not result:
-        return redirect(url_for("web.scan"))
+    result = _scan_results[scan_id]
 
     return render_template(
         "results.html",
         result=result,
+        scan_id=scan_id,
         google_connected=session.get("google_connected", False),
         ms_connected=session.get("ms_connected", False),
     )
@@ -154,8 +166,8 @@ def delete():
     providers = _get_providers()
     provider_map = {p.provider_name: p for p in providers}
 
-    scan_id = session.get("scan_id")
-    result = _active_scans.get(scan_id, {}).get("result") if scan_id else None
+    scan_id = request.form.get("scan_id") or session.get("scan_id")
+    result = _scan_results.get(scan_id) if scan_id else None
 
     if not result:
         return redirect(url_for("web.index"))
@@ -181,9 +193,12 @@ def delete():
         else:
             failed += 1
 
-    # Clean up scan data
-    if scan_id in _active_scans:
-        del _active_scans[scan_id]
+    # Clean up
+    if scan_id in _scan_results:
+        del _scan_results[scan_id]
+    progress_file = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
+    if os.path.exists(progress_file):
+        os.remove(progress_file)
 
     return render_template(
         "deleted.html",
@@ -198,9 +213,6 @@ def delete():
 @web_bp.route("/thumbnail/<provider>/<file_id>")
 def thumbnail(provider, file_id):
     """Proxy route to serve cloud thumbnails to the browser."""
-    import tempfile
-    import os
-
     providers = _get_providers()
     provider_map = {p.provider_name: p for p in providers}
     p = provider_map.get(provider)
@@ -217,7 +229,6 @@ def thumbnail(provider, file_id):
     except Exception:
         pass
     finally:
-        import shutil
         shutil.rmtree(temp_dir, ignore_errors=True)
 
     return "", 404
