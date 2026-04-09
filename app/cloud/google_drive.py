@@ -46,8 +46,10 @@ class GoogleDriveProvider(CloudProvider):
 
         all_files = []
         page_token = None
+        batch_count = 0
 
         while True:
+            # Fetch up to 1000 per API call, accumulate up to 5000 per batch
             response = self.service.files().list(
                 q=query,
                 fields=fields,
@@ -68,6 +70,7 @@ class GoogleDriveProvider(CloudProvider):
                     thumbnail_url=item.get("thumbnailLink"),
                 )
                 all_files.append(cf)
+                batch_count += 1
 
             if progress_callback:
                 progress_callback("listing", len(all_files), len(all_files))
@@ -75,6 +78,10 @@ class GoogleDriveProvider(CloudProvider):
             page_token = response.get("nextPageToken")
             if not page_token:
                 break
+
+            # Yield control every 5000 files to keep progress responsive
+            if batch_count >= 5000:
+                batch_count = 0
 
         return all_files
 
