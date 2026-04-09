@@ -18,6 +18,7 @@ class BaseConfig:
     )
 
     PHASH_THRESHOLD = int(os.environ.get("PHASH_THRESHOLD", "10"))
+    DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() == "true"
 
 
 class DevelopmentConfig(BaseConfig):

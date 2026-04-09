@@ -1,12 +1,14 @@
 import json
+import logging
 import os
 import threading
 import tempfile
 import shutil
+import traceback
 
 from flask import (
     Blueprint, render_template, redirect, url_for, session,
-    request, Response, jsonify,
+    request, Response, jsonify, current_app,
 )
 
 from app.cloud.google_drive import GoogleDriveProvider
@@ -15,6 +17,9 @@ from app.core.grouper import scan_for_duplicates
 from app.core.models import ScanResult
 
 web_bp = Blueprint("web", __name__)
+
+logger = logging.getLogger("photocleaner")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 # Store scan results in memory (keyed by scan_id)
 _scan_results = {}
@@ -43,7 +48,7 @@ def _format_size(bytes_val):
     return f"{bytes_val:.1f} TB"
 
 
-def _write_progress(scan_id, stage="starting", current=0, total=0, done=False, error=None):
+def _write_progress(scan_id, stage="starting", current=0, total=0, done=False, error=None, debug_log=None):
     """Write scan progress to a file in /tmp."""
     data = {
         "stage": stage,
@@ -51,10 +56,14 @@ def _write_progress(scan_id, stage="starting", current=0, total=0, done=False, e
         "total": total,
         "done": done,
         "error": error,
+        "debug_log": debug_log,
     }
     path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
-    with open(path, "w") as f:
-        json.dump(data, f)
+    try:
+        with open(path, "w") as f:
+            json.dump(data, f)
+    except Exception as e:
+        logger.error(f"Failed to write progress file: {e}")
 
 
 def _read_progress(scan_id):
@@ -63,8 +72,26 @@ def _read_progress(scan_id):
     try:
         with open(path, "r") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.warning(f"Failed to read progress for {scan_id}: {e}")
         return None
+
+
+def _append_debug(scan_id, message):
+    """Append a debug message to the scan's progress file."""
+    progress = _read_progress(scan_id)
+    if progress:
+        log = progress.get("debug_log") or []
+        log.append(message)
+        # Keep only last 50 messages
+        progress["debug_log"] = log[-50:]
+        path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
+        try:
+            with open(path, "w") as f:
+                json.dump(progress, f)
+        except Exception:
+            pass
+    logger.info(f"[{scan_id[:8]}] {message}")
 
 
 @web_bp.app_template_filter("filesize")
@@ -88,14 +115,24 @@ def scan():
     providers = _get_providers()
     if not providers:
         return redirect(url_for("web.index"))
-    return render_template("scanning.html")
+    return render_template(
+        "scanning.html",
+        debug_mode=current_app.config.get("DEBUG_MODE", False),
+    )
 
 
 @web_bp.route("/scan/start", methods=["POST"])
 def scan_start():
     """Kick off the scan in a background thread and return immediately."""
+    logger.info("=== /scan/start called ===")
+
     providers = _get_providers()
+    logger.info(f"Providers found: {len(providers)}")
+    for p in providers:
+        logger.info(f"  - {p.provider_name}")
+
     if not providers:
+        logger.warning("No providers connected, returning 400")
         return jsonify({"error": "No cloud accounts connected"}), 400
 
     threshold = request.form.get("threshold", 10, type=int)
@@ -103,23 +140,42 @@ def scan_start():
     import secrets
     scan_id = secrets.token_urlsafe(16)
     session["scan_id"] = scan_id
+    logger.info(f"Created scan_id: {scan_id}")
 
     # Write initial progress file
-    _write_progress(scan_id, stage="starting")
+    _write_progress(scan_id, stage="starting", debug_log=["Scan created"])
+
+    # Verify progress file was written
+    verify = _read_progress(scan_id)
+    logger.info(f"Progress file verification: {'OK' if verify else 'FAILED'}")
+    if not verify:
+        logger.error(f"PROGRESS_DIR={PROGRESS_DIR}, exists={os.path.exists(PROGRESS_DIR)}")
+        logger.error(f"Dir contents: {os.listdir(PROGRESS_DIR) if os.path.exists(PROGRESS_DIR) else 'N/A'}")
 
     def run_scan():
+        _append_debug(scan_id, f"Background thread started, {len(providers)} providers")
+
         def progress_callback(stage, current, total):
             _write_progress(scan_id, stage=stage, current=current, total=total)
 
         try:
+            _append_debug(scan_id, "Calling scan_for_duplicates...")
             result = scan_for_duplicates(providers, threshold, progress_callback)
             _scan_results[scan_id] = result
+            _append_debug(scan_id, f"Scan complete: {result.total_photos} photos, "
+                          f"{len(result.exact_groups)} exact groups, "
+                          f"{len(result.similar_groups)} similar groups")
             _write_progress(scan_id, stage="done", current=100, total=100, done=True)
         except Exception as e:
-            _write_progress(scan_id, error=str(e))
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            tb = traceback.format_exc()
+            logger.error(f"Scan failed: {error_msg}\n{tb}")
+            _append_debug(scan_id, f"ERROR: {error_msg}")
+            _write_progress(scan_id, error=error_msg)
 
     thread = threading.Thread(target=run_scan, daemon=True)
     thread.start()
+    logger.info(f"Background thread started for scan {scan_id}")
 
     return jsonify({"scan_id": scan_id})
 
@@ -128,14 +184,46 @@ def scan_start():
 def scan_progress():
     """Polling endpoint that returns current scan progress as JSON."""
     scan_id = request.args.get("scan_id") or session.get("scan_id")
+
     if not scan_id:
-        return jsonify({"error": "No active scan"})
+        logger.warning("/scan/progress called with no scan_id (not in args or session)")
+        return jsonify({
+            "error": "No active scan",
+            "debug": "scan_id missing from both URL params and session",
+        })
 
     progress = _read_progress(scan_id)
     if not progress:
-        return jsonify({"error": "No active scan"})
+        logger.warning(f"/scan/progress: no progress file for scan_id={scan_id}")
+        # Check what files exist
+        existing = os.listdir(PROGRESS_DIR) if os.path.exists(PROGRESS_DIR) else []
+        return jsonify({
+            "error": "No active scan",
+            "debug": f"scan_id={scan_id}, progress_dir_exists={os.path.exists(PROGRESS_DIR)}, "
+                     f"files_in_dir={existing[:10]}",
+        })
 
     return jsonify(progress)
+
+
+@web_bp.route("/scan/debug")
+def scan_debug():
+    """Debug endpoint showing all scan state."""
+    scan_id = request.args.get("scan_id") or session.get("scan_id")
+    existing_files = os.listdir(PROGRESS_DIR) if os.path.exists(PROGRESS_DIR) else []
+    progress = _read_progress(scan_id) if scan_id else None
+
+    return jsonify({
+        "scan_id_from_args": request.args.get("scan_id"),
+        "scan_id_from_session": session.get("scan_id"),
+        "progress_dir": PROGRESS_DIR,
+        "progress_dir_exists": os.path.exists(PROGRESS_DIR),
+        "files_in_progress_dir": existing_files[:20],
+        "progress_data": progress,
+        "scan_results_keys": list(_scan_results.keys())[:10],
+        "session_keys": list(session.keys()),
+        "google_connected": session.get("google_connected", False),
+    })
 
 
 @web_bp.route("/results")

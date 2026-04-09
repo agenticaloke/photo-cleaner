@@ -10,6 +10,15 @@
 
 <progress id="scan-progress" value="0" max="100"></progress>
 <p><small id="progress-detail">Preparing...</small></p>
+
+{% if debug_mode %}
+<details open>
+    <summary>Debug Log</summary>
+    <pre id="debug-log" style="max-height: 300px; overflow-y: auto; font-size: 0.8rem; background: var(--card-background-color); padding: 1rem; border-radius: 4px;">Waiting for scan to start...</pre>
+    <p><small>Scan ID: <code id="debug-scan-id">—</code> |
+    <a href="#" id="debug-endpoint-link" target="_blank">Open /scan/debug</a></small></p>
+</details>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -26,6 +35,20 @@ document.addEventListener('DOMContentLoaded', function() {
         'hashing': 'Analyzing photos for visual similarity...',
     };
 
+    var debugMode = {{ 'true' if debug_mode else 'false' }};
+    var debugLog = document.getElementById('debug-log');
+    var debugScanId = document.getElementById('debug-scan-id');
+    var debugLink = document.getElementById('debug-endpoint-link');
+
+    function appendDebug(msg) {
+        if (!debugMode || !debugLog) return;
+        var ts = new Date().toLocaleTimeString();
+        debugLog.textContent += '\n[' + ts + '] ' + msg;
+        debugLog.scrollTop = debugLog.scrollHeight;
+    }
+
+    appendDebug('Starting scan request...');
+
     // Start the scan
     fetch('{{ url_for("web.scan_start") }}', {
         method: 'POST',
@@ -35,25 +58,55 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         body: 'threshold=10'
     })
-    .then(function(response) { return response.json(); })
+    .then(function(response) {
+        appendDebug('scan_start response status: ' + response.status);
+        return response.json();
+    })
     .then(function(data) {
+        appendDebug('scan_start response: ' + JSON.stringify(data));
         if (data.error) {
             statusText.textContent = 'Error: ' + data.error;
+            appendDebug('ERROR from scan_start: ' + data.error);
             return;
         }
         // Poll for progress every 2 seconds, passing scan_id in URL
         var scanId = data.scan_id;
+        if (debugScanId) debugScanId.textContent = scanId;
+        if (debugLink) debugLink.href = '{{ url_for("web.scan_debug") }}?scan_id=' + scanId;
+        appendDebug('Got scan_id: ' + scanId + ', starting polling...');
         pollProgress(scanId);
     })
     .catch(function(err) {
         statusText.textContent = 'Failed to start scan: ' + err;
+        appendDebug('FETCH ERROR: ' + err);
     });
 
+    var pollCount = 0;
+
     function pollProgress(scanId) {
+        pollCount++;
         fetch('{{ url_for("web.scan_progress") }}?scan_id=' + scanId)
-        .then(function(response) { return response.json(); })
+        .then(function(response) {
+            appendDebug('Poll #' + pollCount + ' status: ' + response.status);
+            return response.json();
+        })
         .then(function(d) {
-            statusText.textContent = stageLabels[d.stage] || d.stage;
+            appendDebug('Poll #' + pollCount + ' data: ' + JSON.stringify(d).substring(0, 200));
+
+            // Show server-side debug log if available
+            if (d.debug_log && debugLog) {
+                debugLog.textContent = 'Server debug log:\n' + d.debug_log.join('\n');
+                debugLog.scrollTop = debugLog.scrollHeight;
+            }
+
+            if (d.error && !d.stage) {
+                statusText.textContent = 'Error: ' + d.error;
+                detail.textContent = d.debug || 'Please try again.';
+                appendDebug('ERROR: ' + d.error + ' | debug: ' + (d.debug || 'none'));
+                return;
+            }
+
+            statusText.textContent = stageLabels[d.stage] || d.stage || 'Working...';
 
             if (d.total > 0) {
                 var pct = Math.round((d.current / d.total) * 100);
@@ -62,6 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             if (d.done) {
+                appendDebug('Scan complete! Redirecting to results...');
                 window.location.href = '{{ url_for("web.results") }}?scan_id=' + scanId;
                 return;
             }
@@ -69,13 +123,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (d.error) {
                 statusText.textContent = 'Error: ' + d.error;
                 detail.textContent = 'Please try again.';
+                appendDebug('SCAN ERROR: ' + d.error);
                 return;
             }
 
             // Poll again in 2 seconds
             setTimeout(function() { pollProgress(scanId); }, 2000);
         })
-        .catch(function() {
+        .catch(function(err) {
+            appendDebug('Poll #' + pollCount + ' NETWORK ERROR: ' + err);
             // Retry on network error
             setTimeout(function() { pollProgress(scanId); }, 3000);
         });
