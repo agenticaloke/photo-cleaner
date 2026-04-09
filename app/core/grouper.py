@@ -5,13 +5,15 @@ from app.core.hasher import find_exact_duplicates, find_similar_photos
 from app.core.models import ScanResult
 
 BATCH_SIZE = 5000
+MAX_SIMILAR_SCAN = 2000  # Max files to scan for visual similarity (thumbnail downloads)
 
 
 def scan_for_duplicates(providers, threshold=10, progress_callback=None):
     """Run the full duplicate detection pipeline across all connected providers.
 
     Processes photos in batches of 5,000 to avoid memory and timeout issues
-    with large libraries.
+    with large libraries. Limits visual similarity scanning to 2,000 files
+    to avoid excessive thumbnail downloads.
 
     Args:
         providers: list of CloudProvider instances (Google Drive, OneDrive, etc.)
@@ -21,7 +23,7 @@ def scan_for_duplicates(providers, threshold=10, progress_callback=None):
     Returns:
         ScanResult with all duplicate groups found
     """
-    # Step 1: List all photos from all providers (in batches)
+    # Step 1: List all photos from all providers
     all_files = []
     for provider in providers:
         if progress_callback:
@@ -34,10 +36,15 @@ def scan_for_duplicates(providers, threshold=10, progress_callback=None):
 
     total = len(all_files)
 
-    # Step 2: Find exact duplicates across ALL files (fast — just hash comparison)
+    # Step 2: Find exact duplicates (fast — just SHA-256 string comparison)
     if progress_callback:
         progress_callback("exact_matching", 0, total)
+
     exact_groups = find_exact_duplicates(all_files)
+
+    if progress_callback:
+        exact_count = sum(len(g.files) for g in exact_groups)
+        progress_callback("exact_matching", total, total)
 
     # Step 3: Find files NOT already in an exact group
     exact_file_ids = set()
@@ -46,26 +53,29 @@ def scan_for_duplicates(providers, threshold=10, progress_callback=None):
             exact_file_ids.add(f.file_id)
     remaining = [f for f in all_files if f.file_id not in exact_file_ids]
 
-    # Step 4: Find visually similar photos in batches of BATCH_SIZE
+    # Step 4: Find visually similar photos (downloads thumbnails)
+    # Cap at MAX_SIMILAR_SCAN to avoid downloading too many thumbnails
     similar_groups = []
+    skipped_similar = 0
     if remaining and providers:
+        if len(remaining) > MAX_SIMILAR_SCAN:
+            skipped_similar = len(remaining) - MAX_SIMILAR_SCAN
+            # Prioritize: sort by size descending (larger files more likely to have
+            # resized duplicates), take the top MAX_SIMILAR_SCAN
+            remaining_for_similar = sorted(remaining, key=lambda f: f.size, reverse=True)[:MAX_SIMILAR_SCAN]
+        else:
+            remaining_for_similar = remaining
+
+        if progress_callback:
+            progress_callback("hashing", 0, len(remaining_for_similar))
+
         temp_dir = tempfile.mkdtemp(prefix="photocleaner-")
         try:
             provider_map = {p.provider_name: p for p in providers}
 
-            # Process in batches to avoid memory/timeout issues
             all_similar = []
-            for batch_start in range(0, len(remaining), BATCH_SIZE):
-                batch = remaining[batch_start:batch_start + BATCH_SIZE]
-                batch_num = (batch_start // BATCH_SIZE) + 1
-                total_batches = (len(remaining) + BATCH_SIZE - 1) // BATCH_SIZE
-
-                if progress_callback:
-                    progress_callback(
-                        "hashing",
-                        batch_start,
-                        len(remaining),
-                    )
+            for batch_start in range(0, len(remaining_for_similar), BATCH_SIZE):
+                batch = remaining_for_similar[batch_start:batch_start + BATCH_SIZE]
 
                 # Group batch files by provider
                 by_provider = {}
@@ -96,7 +106,6 @@ def scan_for_duplicates(providers, threshold=10, progress_callback=None):
 
             similar_groups = all_similar
         finally:
-            # Temp dir cleanup is handled by the background cleanup thread
             pass
 
     # Step 5: Calculate stats
