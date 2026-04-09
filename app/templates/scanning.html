@@ -41,15 +41,16 @@ document.addEventListener('DOMContentLoaded', function() {
             statusText.textContent = 'Error: ' + data.error;
             return;
         }
-        // Poll for progress every 2 seconds
-        pollProgress();
+        // Poll for progress every 2 seconds, passing scan_id in URL
+        var scanId = data.scan_id;
+        pollProgress(scanId);
     })
     .catch(function(err) {
         statusText.textContent = 'Failed to start scan: ' + err;
     });
 
-    function pollProgress() {
-        fetch('{{ url_for("web.scan_progress") }}')
+    function pollProgress(scanId) {
+        fetch('{{ url_for("web.scan_progress") }}?scan_id=' + scanId)
         .then(function(response) { return response.json(); })
         .then(function(d) {
             statusText.textContent = stageLabels[d.stage] || d.stage;
@@ -72,11 +73,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Poll again in 2 seconds
-            setTimeout(pollProgress, 2000);
+            setTimeout(function() { pollProgress(scanId); }, 2000);
         })
         .catch(function() {
             // Retry on network error
-            setTimeout(pollProgress, 3000);
+            setTimeout(function() { pollProgress(scanId); }, 3000);
         });
     }
 });

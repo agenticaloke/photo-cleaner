@@ -109,7 +109,8 @@ _active_scans = {}
 @web_bp.route("/scan/progress")
 def scan_progress():
     """Polling endpoint that returns current scan progress as JSON."""
-    scan_id = session.get("scan_id")
+    # Accept scan_id from query param (reliable) or session (fallback)
+    scan_id = request.args.get("scan_id") or session.get("scan_id")
     if not scan_id or scan_id not in _active_scans:
         return jsonify({"error": "No active scan"})
 
