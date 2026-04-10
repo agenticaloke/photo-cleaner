@@ -24,5 +24,7 @@ services:
         sync: false
       - key: PHASH_THRESHOLD
         value: "10"
+      - key: DEBUG_MODE
+        value: "true"
       - key: PYTHON_VERSION
         value: "3.11.9"

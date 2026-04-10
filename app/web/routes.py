@@ -24,9 +24,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 # Store scan results in memory (keyed by scan_id)
 _scan_results = {}
 
-# Directory for scan progress files
-PROGRESS_DIR = os.path.join(tempfile.gettempdir(), "photocleaner-progress")
+# Directory for scan progress files — hardcode /tmp to avoid tempfile.gettempdir() inconsistencies
+PROGRESS_DIR = "/tmp/photocleaner-progress"
 os.makedirs(PROGRESS_DIR, exist_ok=True)
+logger.info(f"PROGRESS_DIR initialized: {PROGRESS_DIR} (exists={os.path.exists(PROGRESS_DIR)})")
 
 
 def _get_providers():
@@ -58,12 +59,15 @@ def _write_progress(scan_id, stage="starting", current=0, total=0, done=False, e
         "error": error,
         "debug_log": debug_log,
     }
+    os.makedirs(PROGRESS_DIR, exist_ok=True)  # Ensure dir exists on every write
     path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
     try:
         with open(path, "w") as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
     except Exception as e:
-        logger.error(f"Failed to write progress file: {e}")
+        logger.error(f"Failed to write progress file {path}: {e}")
 
 
 def _read_progress(scan_id):
@@ -146,11 +150,13 @@ def scan_start():
     _write_progress(scan_id, stage="starting", debug_log=["Scan created"])
 
     # Verify progress file was written
+    expected_path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
+    file_exists = os.path.exists(expected_path)
     verify = _read_progress(scan_id)
-    logger.info(f"Progress file verification: {'OK' if verify else 'FAILED'}")
-    if not verify:
-        logger.error(f"PROGRESS_DIR={PROGRESS_DIR}, exists={os.path.exists(PROGRESS_DIR)}")
-        logger.error(f"Dir contents: {os.listdir(PROGRESS_DIR) if os.path.exists(PROGRESS_DIR) else 'N/A'}")
+    logger.info(f"Progress file verification: file_exists={file_exists}, readable={'OK' if verify else 'FAILED'}")
+    logger.info(f"  path={expected_path}")
+    logger.info(f"  dir_exists={os.path.exists(PROGRESS_DIR)}, "
+                f"dir_contents={os.listdir(PROGRESS_DIR) if os.path.exists(PROGRESS_DIR) else 'N/A'}")
 
     def run_scan():
         _append_debug(scan_id, f"Background thread started, {len(providers)} providers")
@@ -213,11 +219,17 @@ def scan_debug():
     existing_files = os.listdir(PROGRESS_DIR) if os.path.exists(PROGRESS_DIR) else []
     progress = _read_progress(scan_id) if scan_id else None
 
+    # Check if the expected file exists directly
+    expected_file = os.path.join(PROGRESS_DIR, f"{scan_id}.json") if scan_id else None
+
     return jsonify({
         "scan_id_from_args": request.args.get("scan_id"),
         "scan_id_from_session": session.get("scan_id"),
         "progress_dir": PROGRESS_DIR,
+        "tempfile_gettempdir": tempfile.gettempdir(),
         "progress_dir_exists": os.path.exists(PROGRESS_DIR),
+        "expected_file": expected_file,
+        "expected_file_exists": os.path.exists(expected_file) if expected_file else None,
         "files_in_progress_dir": existing_files[:20],
         "progress_data": progress,
         "scan_results_keys": list(_scan_results.keys())[:10],
