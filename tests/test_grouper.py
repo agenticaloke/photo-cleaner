@@ -112,7 +112,7 @@ class TestScanWithSimilarPhotos:
             _make_file("similar", "similar.jpg", "hash_similar", size=3000),
         ]
         provider = MockProvider(files, fixtures_dir)
-        result = scan_for_duplicates([provider], threshold=15)
+        result = scan_for_duplicates([provider], threshold=15, mode="advanced")
 
         assert len(result.similar_groups) >= 1
 
@@ -124,7 +124,7 @@ class TestScanWithSimilarPhotos:
             _make_file("different", "different.jpg", "hash_diff", size=4000),
         ]
         provider = MockProvider(files, fixtures_dir)
-        result = scan_for_duplicates([provider], threshold=10)
+        result = scan_for_duplicates([provider], threshold=10, mode="advanced")
 
         # The exact pair should be found
         assert len(result.exact_groups) == 1

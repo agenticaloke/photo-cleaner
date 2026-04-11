@@ -8,7 +8,7 @@ BATCH_SIZE = 5000
 MAX_SIMILAR_SCAN = 2000  # Max files to scan for visual similarity (thumbnail downloads)
 
 
-def scan_for_duplicates(providers, threshold=10, progress_callback=None):
+def scan_for_duplicates(providers, threshold=10, progress_callback=None, mode="basic"):
     """Run the full duplicate detection pipeline across all connected providers.
 
     Processes photos in batches of 5,000 to avoid memory and timeout issues
@@ -19,6 +19,7 @@ def scan_for_duplicates(providers, threshold=10, progress_callback=None):
         providers: list of CloudProvider instances (Google Drive, OneDrive, etc.)
         threshold: Hamming distance threshold for similar photos
         progress_callback: function(stage, current, total) for progress updates
+        mode: "basic" for exact matches only, "advanced" for exact + similar
 
     Returns:
         ScanResult with all duplicate groups found
@@ -46,14 +47,16 @@ def scan_for_duplicates(providers, threshold=10, progress_callback=None):
         exact_count = sum(len(g.files) for g in exact_groups)
         progress_callback("exact_matching", total, total)
 
-    # Step 3: Find files NOT already in an exact group
-    exact_file_ids = set()
-    for group in exact_groups:
-        for f in group.files:
-            exact_file_ids.add(f.file_id)
-    remaining = [f for f in all_files if f.file_id not in exact_file_ids]
+    # Step 3: Find files NOT already in an exact group (needed for advanced mode)
+    remaining = []
+    if mode == "advanced":
+        exact_file_ids = set()
+        for group in exact_groups:
+            for f in group.files:
+                exact_file_ids.add(f.file_id)
+        remaining = [f for f in all_files if f.file_id not in exact_file_ids]
 
-    # Step 4: Find visually similar photos (downloads thumbnails)
+    # Step 4: Find visually similar photos (downloads thumbnails) — advanced mode only
     # Cap at MAX_SIMILAR_SCAN to avoid downloading too many thumbnails
     similar_groups = []
     skipped_similar = 0

@@ -17,7 +17,7 @@ class TestIndexPage:
             sess["google_connected"] = True
             sess["google_credentials"] = {"token": "fake"}
         resp = client.get("/")
-        assert b"Scan for Duplicates" in resp.data
+        assert b"Basic Scan" in resp.data
 
 
 class TestScanPage:

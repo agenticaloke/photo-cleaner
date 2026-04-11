@@ -119,9 +119,13 @@ def scan():
     providers = _get_providers()
     if not providers:
         return redirect(url_for("web.index"))
+    mode = request.args.get("mode", "basic")
+    threshold = request.args.get("threshold", 10, type=int)
     return render_template(
         "scanning.html",
         debug_mode=current_app.config.get("DEBUG_MODE", False),
+        scan_mode=mode,
+        threshold=threshold,
     )
 
 
@@ -140,6 +144,8 @@ def scan_start():
         return jsonify({"error": "No cloud accounts connected"}), 400
 
     threshold = request.form.get("threshold", 10, type=int)
+    scan_mode = request.form.get("mode", "basic")
+    logger.info(f"Scan mode: {scan_mode}, threshold: {threshold}")
 
     import secrets
     scan_id = secrets.token_urlsafe(16)
@@ -165,8 +171,8 @@ def scan_start():
             _write_progress(scan_id, stage=stage, current=current, total=total)
 
         try:
-            _append_debug(scan_id, "Calling scan_for_duplicates...")
-            result = scan_for_duplicates(providers, threshold, progress_callback)
+            _append_debug(scan_id, f"Calling scan_for_duplicates (mode={scan_mode})...")
+            result = scan_for_duplicates(providers, threshold, progress_callback, mode=scan_mode)
             _scan_results[scan_id] = result
             _append_debug(scan_id, f"Scan complete: {result.total_photos} photos, "
                           f"{len(result.exact_groups)} exact groups, "
