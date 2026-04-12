@@ -151,7 +151,9 @@ class GoogleDriveProvider(CloudProvider):
                 if not page_token:
                     break
 
-        # Now list photos in all collected folders
+        # Now list photos in all collected folders (deduplicate by file_id
+        # since Google Drive files can have multiple parents)
+        seen_ids = set()
         for fid in all_folder_ids:
             query_parts = [f"mimeType='{m}'" for m in IMAGE_MIMES]
             query = (
@@ -171,6 +173,9 @@ class GoogleDriveProvider(CloudProvider):
                     pageToken=page_token,
                 ).execute()
                 for item in resp.get("files", []):
+                    if item["id"] in seen_ids:
+                        continue
+                    seen_ids.add(item["id"])
                     cf = CloudFile(
                         file_id=item["id"],
                         name=item.get("name", ""),

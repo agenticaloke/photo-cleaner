@@ -42,6 +42,18 @@ def scan_for_duplicates(providers, threshold=10, progress_callback=None,
     if not all_files:
         return ScanResult(total_photos=0)
 
+    # Deduplicate by file_id (a file can appear multiple times if it has
+    # multiple parents or if folder selections overlap)
+    seen_ids = set()
+    unique_files = []
+    for f in all_files:
+        if f.file_id not in seen_ids:
+            seen_ids.add(f.file_id)
+            unique_files.append(f)
+    if len(unique_files) < len(all_files):
+        logger.info(f"Deduplicated: {len(all_files)} -> {len(unique_files)} files")
+    all_files = unique_files
+
     total = len(all_files)
 
     # Step 2: Find exact duplicates (fast — just SHA-256 string comparison)
