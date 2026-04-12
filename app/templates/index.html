@@ -24,8 +24,13 @@
 
         <article>
             <header>OneDrive</header>
-            <p>Coming Soon</p>
-            <button disabled>Connect OneDrive</button>
+            {% if ms_connected %}
+                <p><span class="badge-connected">Connected</span></p>
+                <a href="{{ url_for('microsoft_auth.logout') }}" role="button" class="outline secondary">Disconnect</a>
+            {% else %}
+                <p>Scan photos stored in your OneDrive.</p>
+                <a href="{{ url_for('microsoft_auth.login') }}" role="button">Connect OneDrive</a>
+            {% endif %}
         </article>
     </div>
 </section>

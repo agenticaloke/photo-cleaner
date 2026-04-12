@@ -6,7 +6,7 @@ from flask import Blueprint, redirect, request, session, url_for, current_app
 microsoft_auth_bp = Blueprint("microsoft_auth", __name__, url_prefix="/auth/microsoft")
 
 AUTHORITY = "https://login.microsoftonline.com/consumers"
-SCOPES = ["User.Read", "Files.Read.All", "Files.ReadWrite.All"]
+SCOPES = ["User.Read", "Files.Read", "Files.ReadWrite"]
 
 
 def _build_msal_app():
