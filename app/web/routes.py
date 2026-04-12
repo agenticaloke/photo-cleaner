@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import threading
@@ -21,13 +20,11 @@ web_bp = Blueprint("web", __name__)
 logger = logging.getLogger("photocleaner")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Store scan results in memory (keyed by scan_id)
-_scan_results = {}
-
-# Directory for scan progress files — hardcode /tmp to avoid tempfile.gettempdir() inconsistencies
-PROGRESS_DIR = "/tmp/photocleaner-progress"
-os.makedirs(PROGRESS_DIR, exist_ok=True)
-logger.info(f"PROGRESS_DIR initialized: {PROGRESS_DIR} (exists={os.path.exists(PROGRESS_DIR)})")
+# Thread-safe in-memory storage for scan progress and results
+# Works because we run gunicorn with --workers 1 --threads 4 (single process)
+_lock = threading.Lock()
+_scan_progress = {}   # scan_id -> {stage, current, total, done, error, debug_log}
+_scan_results = {}    # scan_id -> ScanResult
 
 
 def _get_providers():
@@ -50,51 +47,35 @@ def _format_size(bytes_val):
 
 
 def _write_progress(scan_id, stage="starting", current=0, total=0, done=False, error=None, debug_log=None):
-    """Write scan progress to a file in /tmp."""
-    data = {
-        "stage": stage,
-        "current": current,
-        "total": total,
-        "done": done,
-        "error": error,
-        "debug_log": debug_log,
-    }
-    os.makedirs(PROGRESS_DIR, exist_ok=True)  # Ensure dir exists on every write
-    path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
-    try:
-        with open(path, "w") as f:
-            json.dump(data, f)
-            f.flush()
-            os.fsync(f.fileno())
-    except Exception as e:
-        logger.error(f"Failed to write progress file {path}: {e}")
+    """Write scan progress to in-memory dict (thread-safe)."""
+    with _lock:
+        existing = _scan_progress.get(scan_id, {})
+        # Preserve debug_log from previous writes if not provided
+        if debug_log is None:
+            debug_log = existing.get("debug_log", [])
+        _scan_progress[scan_id] = {
+            "stage": stage,
+            "current": current,
+            "total": total,
+            "done": done,
+            "error": error,
+            "debug_log": debug_log,
+        }
 
 
 def _read_progress(scan_id):
-    """Read scan progress from file."""
-    path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
-    try:
-        with open(path, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.warning(f"Failed to read progress for {scan_id}: {e}")
-        return None
+    """Read scan progress from in-memory dict (thread-safe)."""
+    with _lock:
+        return _scan_progress.get(scan_id, {}).copy() if scan_id in _scan_progress else None
 
 
 def _append_debug(scan_id, message):
-    """Append a debug message to the scan's progress file."""
-    progress = _read_progress(scan_id)
-    if progress:
-        log = progress.get("debug_log") or []
-        log.append(message)
-        # Keep only last 50 messages
-        progress["debug_log"] = log[-50:]
-        path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
-        try:
-            with open(path, "w") as f:
-                json.dump(progress, f)
-        except Exception:
-            pass
+    """Append a debug message to the scan's progress (thread-safe)."""
+    with _lock:
+        if scan_id in _scan_progress:
+            log = _scan_progress[scan_id].get("debug_log") or []
+            log.append(message)
+            _scan_progress[scan_id]["debug_log"] = log[-50:]
     logger.info(f"[{scan_id[:8]}] {message}")
 
 
@@ -152,17 +133,12 @@ def scan_start():
     session["scan_id"] = scan_id
     logger.info(f"Created scan_id: {scan_id}")
 
-    # Write initial progress file
+    # Write initial progress to in-memory dict
     _write_progress(scan_id, stage="starting", debug_log=["Scan created"])
 
-    # Verify progress file was written
-    expected_path = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
-    file_exists = os.path.exists(expected_path)
+    # Verify progress was stored
     verify = _read_progress(scan_id)
-    logger.info(f"Progress file verification: file_exists={file_exists}, readable={'OK' if verify else 'FAILED'}")
-    logger.info(f"  path={expected_path}")
-    logger.info(f"  dir_exists={os.path.exists(PROGRESS_DIR)}, "
-                f"dir_contents={os.listdir(PROGRESS_DIR) if os.path.exists(PROGRESS_DIR) else 'N/A'}")
+    logger.info(f"Progress stored: {'OK' if verify else 'FAILED'}")
 
     def run_scan():
         _append_debug(scan_id, f"Background thread started, {len(providers)} providers")
@@ -206,13 +182,12 @@ def scan_progress():
 
     progress = _read_progress(scan_id)
     if not progress:
-        logger.warning(f"/scan/progress: no progress file for scan_id={scan_id}")
-        # Check what files exist
-        existing = os.listdir(PROGRESS_DIR) if os.path.exists(PROGRESS_DIR) else []
+        logger.warning(f"/scan/progress: no progress for scan_id={scan_id}")
+        with _lock:
+            known_ids = list(_scan_progress.keys())
         return jsonify({
             "error": "No active scan",
-            "debug": f"scan_id={scan_id}, progress_dir_exists={os.path.exists(PROGRESS_DIR)}, "
-                     f"files_in_dir={existing[:10]}",
+            "debug": f"scan_id={scan_id}, known_scans={known_ids[:5]}",
         })
 
     return jsonify(progress)
@@ -222,21 +197,16 @@ def scan_progress():
 def scan_debug():
     """Debug endpoint showing all scan state."""
     scan_id = request.args.get("scan_id") or session.get("scan_id")
-    existing_files = os.listdir(PROGRESS_DIR) if os.path.exists(PROGRESS_DIR) else []
     progress = _read_progress(scan_id) if scan_id else None
 
-    # Check if the expected file exists directly
-    expected_file = os.path.join(PROGRESS_DIR, f"{scan_id}.json") if scan_id else None
+    with _lock:
+        known_scan_ids = list(_scan_progress.keys())
 
     return jsonify({
         "scan_id_from_args": request.args.get("scan_id"),
         "scan_id_from_session": session.get("scan_id"),
-        "progress_dir": PROGRESS_DIR,
-        "tempfile_gettempdir": tempfile.gettempdir(),
-        "progress_dir_exists": os.path.exists(PROGRESS_DIR),
-        "expected_file": expected_file,
-        "expected_file_exists": os.path.exists(expected_file) if expected_file else None,
-        "files_in_progress_dir": existing_files[:20],
+        "storage": "in-memory (thread-safe dict)",
+        "known_scan_ids": known_scan_ids[:20],
         "progress_data": progress,
         "scan_results_keys": list(_scan_results.keys())[:10],
         "session_keys": list(session.keys()),
@@ -302,9 +272,8 @@ def delete():
     # Clean up
     if scan_id in _scan_results:
         del _scan_results[scan_id]
-    progress_file = os.path.join(PROGRESS_DIR, f"{scan_id}.json")
-    if os.path.exists(progress_file):
-        os.remove(progress_file)
+    with _lock:
+        _scan_progress.pop(scan_id, None)
 
     return render_template(
         "deleted.html",
