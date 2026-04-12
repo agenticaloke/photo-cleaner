@@ -5,7 +5,7 @@
 {% block content %}
 <hgroup>
     <h1>Select Folders to Scan</h1>
-    <p>Pick specific folders or scan everything. Subfolders are included automatically.</p>
+    <p>Pick specific folders or scan everything. Checking a folder automatically includes all its subfolders.</p>
 </hgroup>
 
 <form id="folder-form">
@@ -18,16 +18,20 @@
         </label>
         <div id="gdrive-folders" style="display: none; margin-left: 1.5rem; margin-top: 0.5rem;">
             {% for folder in folder_tree.get('google_drive', []) %}
-            <div>
+            <div class="folder-item">
                 <label>
-                    <input type="checkbox" name="folders" value="{{ folder.id }}" class="gdrive-folder">
-                    {{ folder.name }}
+                    <input type="checkbox" name="folders" value="{{ folder.id }}"
+                           class="gdrive-folder parent-folder"
+                           data-children="{{ folder.children | map(attribute='id') | list | join(',') }}">
+                    <strong>{{ folder.name }}</strong>
                 </label>
                 {% if folder.children %}
                 <div style="margin-left: 1.5rem;">
                     {% for child in folder.children %}
                     <label>
-                        <input type="checkbox" name="folders" value="{{ child.id }}" class="gdrive-folder">
+                        <input type="checkbox" name="folders" value="{{ child.id }}"
+                               class="gdrive-folder child-folder"
+                               data-parent="{{ folder.id }}">
                         {{ child.name }}
                     </label><br>
                     {% endfor %}
@@ -51,16 +55,20 @@
         </label>
         <div id="onedrive-folders" style="display: none; margin-left: 1.5rem; margin-top: 0.5rem;">
             {% for folder in folder_tree.get('onedrive', []) %}
-            <div>
+            <div class="folder-item">
                 <label>
-                    <input type="checkbox" name="folders" value="{{ folder.id }}" class="onedrive-folder">
-                    {{ folder.name }}
+                    <input type="checkbox" name="folders" value="{{ folder.id }}"
+                           class="onedrive-folder parent-folder"
+                           data-children="{{ folder.children | map(attribute='id') | list | join(',') }}">
+                    <strong>{{ folder.name }}</strong>
                 </label>
                 {% if folder.children %}
                 <div style="margin-left: 1.5rem;">
                     {% for child in folder.children %}
                     <label>
-                        <input type="checkbox" name="folders" value="{{ child.id }}" class="onedrive-folder">
+                        <input type="checkbox" name="folders" value="{{ child.id }}"
+                               class="onedrive-folder child-folder"
+                               data-parent="{{ folder.id }}">
                         {{ child.name }}
                     </label><br>
                     {% endfor %}
@@ -118,6 +126,40 @@ document.addEventListener('DOMContentLoaded', function() {
 
     setupToggle('gdrive-all', 'gdrive-folders');
     setupToggle('onedrive-all', 'onedrive-folders');
+
+    // Parent-child cascading: checking a parent checks all children,
+    // unchecking a parent unchecks all children.
+    // Children can be individually unchecked without affecting parent state.
+    document.querySelectorAll('.parent-folder').forEach(function(parentCb) {
+        parentCb.addEventListener('change', function() {
+            var childIds = parentCb.dataset.children;
+            if (!childIds) return;
+
+            childIds.split(',').forEach(function(childId) {
+                if (!childId) return;
+                var childCb = document.querySelector('input[value="' + childId + '"]');
+                if (childCb) {
+                    childCb.checked = parentCb.checked;
+                }
+            });
+        });
+    });
+
+    // When a child is checked, also check its parent (to include the parent folder)
+    document.querySelectorAll('.child-folder').forEach(function(childCb) {
+        childCb.addEventListener('change', function() {
+            if (childCb.checked) {
+                var parentId = childCb.dataset.parent;
+                if (parentId) {
+                    var parentCheckbox = document.querySelector('.parent-folder[value="' + parentId + '"]');
+                    if (parentCheckbox && !parentCheckbox.checked) {
+                        // Don't cascade — just check the parent without triggering its event
+                        parentCheckbox.checked = true;
+                    }
+                }
+            }
+        });
+    });
 
     // Threshold slider
     var slider = document.getElementById('threshold');
