@@ -34,6 +34,7 @@ class OneDriveProvider(CloudProvider):
         url = f"{GRAPH_BASE}/me/drive/root/search(q='')"
         params = {
             "$select": "id,name,file,size,createdDateTime,lastModifiedDateTime,parentReference,photo",
+            "$expand": "thumbnails",
             "$top": 200,
         }
 
@@ -64,6 +65,14 @@ class OneDriveProvider(CloudProvider):
                 parent = item.get("parentReference", {})
                 folder = parent.get("path", "").replace("/drive/root:", "", 1)
 
+                # Extract thumbnail URL from expanded thumbnails
+                thumb_url = None
+                thumbnails = item.get("thumbnails", [])
+                if thumbnails:
+                    thumb_url = thumbnails[0].get("medium", {}).get("url")
+                    if not thumb_url:
+                        thumb_url = thumbnails[0].get("small", {}).get("url")
+
                 cf = CloudFile(
                     file_id=item["id"],
                     name=name,
@@ -73,6 +82,7 @@ class OneDriveProvider(CloudProvider):
                     mime_type=mime,
                     created_time=item.get("createdDateTime", ""),
                     modified_time=item.get("lastModifiedDateTime", ""),
+                    thumbnail_url=thumb_url,
                     folder_path=folder,
                 )
                 all_files.append(cf)
@@ -87,10 +97,20 @@ class OneDriveProvider(CloudProvider):
         return all_files
 
     def download_thumbnail(self, file_id, temp_dir, thumbnail_url=None):
-        """Download a medium-sized thumbnail. Returns local path or None."""
+        """Download a medium-sized thumbnail. Returns local path or None.
+
+        If thumbnail_url is provided (cached from listing), uses it directly
+        to avoid an extra API call.
+        """
         try:
-            url = f"{GRAPH_BASE}/me/drive/items/{file_id}/thumbnails/0/medium/content"
-            resp = requests.get(url, headers=self._headers, timeout=30)
+            if thumbnail_url:
+                # Cached URL from listing — no auth header needed, URL has token
+                resp = requests.get(thumbnail_url, timeout=5)
+            else:
+                # Fallback: fetch via Graph API
+                url = f"{GRAPH_BASE}/me/drive/items/{file_id}/thumbnails/0/medium/content"
+                resp = requests.get(url, headers=self._headers, timeout=5)
+
             if resp.status_code == 200:
                 path = os.path.join(temp_dir, f"od_{file_id}.jpg")
                 with open(path, "wb") as f:
