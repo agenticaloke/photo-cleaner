@@ -32,11 +32,51 @@ class GoogleDriveProvider(CloudProvider):
     def provider_name(self):
         return "google_drive"
 
-    def list_photos(self, folder_path=None, progress_callback=None):
-        """List all image files in Google Drive with metadata and SHA-256 hashes."""
-        query_parts = []
-        for mime in IMAGE_MIMES:
-            query_parts.append(f"mimeType='{mime}'")
+    def list_folders(self):
+        """List folder tree from Google Drive (2 levels deep)."""
+        def get_children(parent_id, depth=0):
+            if depth >= 2:
+                return []
+            folders = []
+            query = (
+                f"'{parent_id}' in parents and "
+                "mimeType='application/vnd.google-apps.folder' and trashed=false"
+            )
+            page_token = None
+            while True:
+                resp = self.service.files().list(
+                    q=query,
+                    fields="nextPageToken, files(id, name)",
+                    pageSize=100,
+                    pageToken=page_token,
+                ).execute()
+                for item in resp.get("files", []):
+                    folders.append({
+                        "id": item["id"],
+                        "name": item["name"],
+                        "children": get_children(item["id"], depth + 1),
+                    })
+                page_token = resp.get("nextPageToken")
+                if not page_token:
+                    break
+            folders.sort(key=lambda f: f["name"].lower())
+            return folders
+
+        return get_children("root", depth=0)
+
+    def list_photos(self, folder_ids=None, progress_callback=None):
+        """List image files in Google Drive.
+
+        If folder_ids is provided, only lists photos in those folders
+        and their subfolders. Otherwise lists all photos.
+        """
+        if folder_ids:
+            return self._list_photos_in_folders(folder_ids, progress_callback)
+        return self._list_all_photos(progress_callback)
+
+    def _list_all_photos(self, progress_callback=None):
+        """List all image files across the entire Drive."""
+        query_parts = [f"mimeType='{m}'" for m in IMAGE_MIMES]
         query = "(" + " or ".join(query_parts) + ") and trashed=false"
 
         fields = (
@@ -46,10 +86,8 @@ class GoogleDriveProvider(CloudProvider):
 
         all_files = []
         page_token = None
-        batch_count = 0
 
         while True:
-            # Fetch up to 1000 per API call, accumulate up to 5000 per batch
             response = self.service.files().list(
                 q=query,
                 fields=fields,
@@ -70,7 +108,6 @@ class GoogleDriveProvider(CloudProvider):
                     thumbnail_url=item.get("thumbnailLink"),
                 )
                 all_files.append(cf)
-                batch_count += 1
 
             if progress_callback:
                 progress_callback("listing", len(all_files), len(all_files))
@@ -79,22 +116,88 @@ class GoogleDriveProvider(CloudProvider):
             if not page_token:
                 break
 
-            # Yield control every 5000 files to keep progress responsive
-            if batch_count >= 5000:
-                batch_count = 0
+        return all_files
+
+    def _list_photos_in_folders(self, folder_ids, progress_callback=None):
+        """List image files only in the specified folders and their subfolders."""
+        all_files = []
+
+        # Collect all folder IDs including subfolders
+        all_folder_ids = set()
+        folders_to_scan = list(folder_ids)
+
+        while folders_to_scan:
+            fid = folders_to_scan.pop()
+            if fid in all_folder_ids:
+                continue
+            all_folder_ids.add(fid)
+
+            # Find subfolders
+            query = (
+                f"'{fid}' in parents and "
+                "mimeType='application/vnd.google-apps.folder' and trashed=false"
+            )
+            page_token = None
+            while True:
+                resp = self.service.files().list(
+                    q=query,
+                    fields="nextPageToken, files(id)",
+                    pageSize=1000,
+                    pageToken=page_token,
+                ).execute()
+                for item in resp.get("files", []):
+                    folders_to_scan.append(item["id"])
+                page_token = resp.get("nextPageToken")
+                if not page_token:
+                    break
+
+        # Now list photos in all collected folders
+        for fid in all_folder_ids:
+            query_parts = [f"mimeType='{m}'" for m in IMAGE_MIMES]
+            query = (
+                "(" + " or ".join(query_parts) + ") and "
+                f"'{fid}' in parents and trashed=false"
+            )
+            fields = (
+                "nextPageToken, files(id, name, mimeType, size, sha256Checksum, "
+                "md5Checksum, thumbnailLink, createdTime, modifiedTime, parents)"
+            )
+            page_token = None
+            while True:
+                resp = self.service.files().list(
+                    q=query,
+                    fields=fields,
+                    pageSize=1000,
+                    pageToken=page_token,
+                ).execute()
+                for item in resp.get("files", []):
+                    cf = CloudFile(
+                        file_id=item["id"],
+                        name=item.get("name", ""),
+                        provider="google_drive",
+                        size=int(item.get("size", 0)),
+                        sha256=item.get("sha256Checksum"),
+                        mime_type=item.get("mimeType", ""),
+                        created_time=item.get("createdTime", ""),
+                        modified_time=item.get("modifiedTime", ""),
+                        thumbnail_url=item.get("thumbnailLink"),
+                    )
+                    all_files.append(cf)
+
+                if progress_callback:
+                    progress_callback("listing", len(all_files), len(all_files))
+
+                page_token = resp.get("nextPageToken")
+                if not page_token:
+                    break
 
         return all_files
 
     def download_thumbnail(self, file_id, temp_dir, thumbnail_url=None):
-        """Download thumbnail for a file. Returns local path or None.
-
-        If thumbnail_url is provided (cached from listing), uses it directly.
-        Otherwise falls back to fetching metadata (slower, costs an API call).
-        """
+        """Download thumbnail for a file. Returns local path or None."""
         try:
             thumb_url = thumbnail_url
             if not thumb_url:
-                # Fallback: fetch metadata to get thumbnailLink
                 file_meta = self.service.files().get(
                     fileId=file_id, fields="thumbnailLink"
                 ).execute()
@@ -103,7 +206,6 @@ class GoogleDriveProvider(CloudProvider):
             if not thumb_url:
                 return None
 
-            # thumbnailLink already includes auth for Google-hosted thumbnails
             resp = http_requests.get(thumb_url, timeout=5)
             if resp.status_code == 200:
                 path = os.path.join(temp_dir, f"gdrive_{file_id}.jpg")

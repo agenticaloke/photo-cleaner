@@ -37,34 +37,11 @@
 
 {% if google_connected or ms_connected %}
 <section>
-    <h2>2. Choose Scan Type</h2>
-    <div class="grid">
-        <article>
-            <header>Basic — Exact Matches</header>
-            <p>Finds identical copies using file fingerprints. Fast and reliable — no photo downloads needed.</p>
-            <a href="{{ url_for('web.scan', mode='basic') }}" role="button" class="contrast" id="scan-basic-btn">
-                Basic Scan
-            </a>
-        </article>
-
-        <article>
-            <header>Advanced — Similar Photos</header>
-            <p>Finds exact copies <strong>plus</strong> visually similar photos (resized, recompressed). Downloads thumbnails — takes longer.</p>
-
-            <details>
-                <summary>Sensitivity setting</summary>
-                <label for="threshold">
-                    <small>Lower = stricter matching, higher = catches more similar photos</small>
-                </label>
-                <input type="range" id="threshold" name="threshold" min="4" max="20" value="10">
-                <small>Current: <span id="threshold-value">10</span></small>
-            </details>
-
-            <a href="{{ url_for('web.scan', mode='advanced') }}" role="button" class="outline contrast" id="scan-advanced-btn">
-                Advanced Scan
-            </a>
-        </article>
-    </div>
+    <h2>2. Select Folders &amp; Scan</h2>
+    <p>Choose which folders to scan, or scan everything.</p>
+    <a href="{{ url_for('web.folders') }}" role="button" class="contrast">
+        Choose Folders &amp; Scan
+    </a>
 </section>
 {% endif %}
 
@@ -85,20 +62,4 @@
         </div>
     </div>
 </section>
-{% endblock %}
-
-{% block scripts %}
-<script>
-    const slider = document.getElementById('threshold');
-    const display = document.getElementById('threshold-value');
-    const advBtn = document.getElementById('scan-advanced-btn');
-    if (slider && display) {
-        slider.addEventListener('input', function() {
-            display.textContent = slider.value;
-            if (advBtn) {
-                advBtn.href = '{{ url_for("web.scan", mode="advanced") }}&threshold=' + slider.value;
-            }
-        });
-    }
-</script>
 {% endblock %}

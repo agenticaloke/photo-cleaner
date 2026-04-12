@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Select Folders — Photo Cleaner{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Select Folders to Scan</h1>
+    <p>Pick specific folders or scan everything. Subfolders are included automatically.</p>
+</hgroup>
+
+<form id="folder-form">
+    {% if google_connected and folder_tree.get('google_drive') is not none %}
+    <article>
+        <header>Google Drive</header>
+        <label>
+            <input type="checkbox" id="gdrive-all" checked>
+            <strong>Scan all Google Drive photos</strong>
+        </label>
+        <div id="gdrive-folders" style="display: none; margin-left: 1.5rem; margin-top: 0.5rem;">
+            {% for folder in folder_tree.get('google_drive', []) %}
+            <div>
+                <label>
+                    <input type="checkbox" name="folders" value="{{ folder.id }}" class="gdrive-folder">
+                    {{ folder.name }}
+                </label>
+                {% if folder.children %}
+                <div style="margin-left: 1.5rem;">
+                    {% for child in folder.children %}
+                    <label>
+                        <input type="checkbox" name="folders" value="{{ child.id }}" class="gdrive-folder">
+                        {{ child.name }}
+                    </label><br>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            {% if not folder_tree.get('google_drive') %}
+            <small>No folders found (photos may be in the root).</small>
+            {% endif %}
+        </div>
+    </article>
+    {% endif %}
+
+    {% if ms_connected and folder_tree.get('onedrive') is not none %}
+    <article>
+        <header>OneDrive</header>
+        <label>
+            <input type="checkbox" id="onedrive-all" checked>
+            <strong>Scan all OneDrive photos</strong>
+        </label>
+        <div id="onedrive-folders" style="display: none; margin-left: 1.5rem; margin-top: 0.5rem;">
+            {% for folder in folder_tree.get('onedrive', []) %}
+            <div>
+                <label>
+                    <input type="checkbox" name="folders" value="{{ folder.id }}" class="onedrive-folder">
+                    {{ folder.name }}
+                </label>
+                {% if folder.children %}
+                <div style="margin-left: 1.5rem;">
+                    {% for child in folder.children %}
+                    <label>
+                        <input type="checkbox" name="folders" value="{{ child.id }}" class="onedrive-folder">
+                        {{ child.name }}
+                    </label><br>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            {% if not folder_tree.get('onedrive') %}
+            <small>No folders found (photos may be in the root).</small>
+            {% endif %}
+        </div>
+    </article>
+    {% endif %}
+
+    <h2>Scan Type</h2>
+    <div class="grid">
+        <article>
+            <header>Basic — Exact Matches</header>
+            <p>Finds identical copies using file fingerprints. Fast — no photo downloads needed.</p>
+            <button type="button" class="contrast" id="scan-basic-btn">Basic Scan</button>
+        </article>
+
+        <article>
+            <header>Advanced — Similar Photos</header>
+            <p>Finds exact copies <strong>plus</strong> visually similar photos. Takes longer.</p>
+
+            <details>
+                <summary>Sensitivity setting</summary>
+                <label for="threshold">
+                    <small>Lower = stricter, higher = catches more</small>
+                </label>
+                <input type="range" id="threshold" name="threshold" min="4" max="20" value="10">
+                <small>Current: <span id="threshold-value">10</span></small>
+            </details>
+
+            <button type="button" class="outline contrast" id="scan-advanced-btn">Advanced Scan</button>
+        </article>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Toggle folder list visibility when "Scan all" is unchecked
+    function setupToggle(allCheckboxId, folderDivId) {
+        var allCb = document.getElementById(allCheckboxId);
+        var folderDiv = document.getElementById(folderDivId);
+        if (!allCb || !folderDiv) return;
+
+        allCb.addEventListener('change', function() {
+            folderDiv.style.display = allCb.checked ? 'none' : 'block';
+        });
+    }
+
+    setupToggle('gdrive-all', 'gdrive-folders');
+    setupToggle('onedrive-all', 'onedrive-folders');
+
+    // Threshold slider
+    var slider = document.getElementById('threshold');
+    var display = document.getElementById('threshold-value');
+    if (slider && display) {
+        slider.addEventListener('input', function() {
+            display.textContent = slider.value;
+        });
+    }
+
+    // Collect selected folder IDs
+    function getSelectedFolders() {
+        var ids = [];
+        var gdriveAll = document.getElementById('gdrive-all');
+        var onedriveAll = document.getElementById('onedrive-all');
+
+        // If "scan all" is unchecked, collect checked folder checkboxes
+        if (gdriveAll && !gdriveAll.checked) {
+            document.querySelectorAll('.gdrive-folder:checked').forEach(function(cb) {
+                ids.push(cb.value);
+            });
+        }
+        if (onedriveAll && !onedriveAll.checked) {
+            document.querySelectorAll('.onedrive-folder:checked').forEach(function(cb) {
+                ids.push(cb.value);
+            });
+        }
+
+        // Empty means "scan all"
+        return ids.join(',');
+    }
+
+    function startScan(mode) {
+        var folders = getSelectedFolders();
+        var threshold = slider ? slider.value : '10';
+        var params = 'mode=' + mode + '&threshold=' + threshold;
+        if (folders) {
+            params += '&folders=' + encodeURIComponent(folders);
+        }
+        window.location.href = '{{ url_for("web.scan") }}?' + params;
+    }
+
+    document.getElementById('scan-basic-btn').addEventListener('click', function() {
+        startScan('basic');
+    });
+    document.getElementById('scan-advanced-btn').addEventListener('click', function() {
+        startScan('advanced');
+    });
+});
+</script>
+{% endblock %}

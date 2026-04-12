@@ -11,8 +11,20 @@ class CloudProvider(ABC):
         ...
 
     @abstractmethod
-    def list_photos(self, folder_path=None, progress_callback=None):
-        """List all photo files with metadata including server-side hashes.
+    def list_folders(self):
+        """List the top-level folder tree for the user to pick from.
+
+        Returns list of dicts: [{"id": ..., "name": ..., "path": ..., "children": [...]}]
+        Only goes 2 levels deep to keep it fast.
+        """
+        ...
+
+    @abstractmethod
+    def list_photos(self, folder_ids=None, progress_callback=None):
+        """List photo files with metadata including server-side hashes.
+
+        If folder_ids is provided, only scans those folders (and their subfolders).
+        If None, scans the entire drive.
 
         Returns list of CloudFile objects.
         """

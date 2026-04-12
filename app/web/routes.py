@@ -100,6 +100,29 @@ def index():
     )
 
 
+@web_bp.route("/folders")
+def folders():
+    """Show folder picker so users can choose which folders to scan."""
+    providers = _get_providers()
+    if not providers:
+        return redirect(url_for("web.index"))
+
+    folder_tree = {}
+    for p in providers:
+        try:
+            folder_tree[p.provider_name] = p.list_folders()
+        except Exception as e:
+            logger.error(f"Failed to list folders for {p.provider_name}: {e}")
+            folder_tree[p.provider_name] = []
+
+    return render_template(
+        "folders.html",
+        folder_tree=folder_tree,
+        google_connected=session.get("google_connected", False),
+        ms_connected=session.get("ms_connected", False),
+    )
+
+
 @web_bp.route("/scan")
 def scan():
     """Start scanning — shows progress page."""
@@ -108,11 +131,14 @@ def scan():
         return redirect(url_for("web.index"))
     mode = request.args.get("mode", "basic")
     threshold = request.args.get("threshold", 10, type=int)
+    # Folder IDs come as comma-separated string from the folder picker
+    folder_ids_str = request.args.get("folders", "")
     return render_template(
         "scanning.html",
         debug_mode=current_app.config.get("DEBUG_MODE", False),
         scan_mode=mode,
         threshold=threshold,
+        folder_ids=folder_ids_str,
     )
 
 
@@ -134,7 +160,9 @@ def scan_start():
 
     threshold = request.form.get("threshold", 10, type=int)
     scan_mode = request.form.get("mode", "basic")
-    logger.info(f"Scan mode: {scan_mode}, threshold: {threshold}")
+    folder_ids_str = request.form.get("folders", "")
+    folder_ids = [f.strip() for f in folder_ids_str.split(",") if f.strip()] or None
+    logger.info(f"Scan mode: {scan_mode}, threshold: {threshold}, folders: {len(folder_ids) if folder_ids else 'all'}")
 
     import secrets
     scan_id = secrets.token_urlsafe(16)
@@ -173,9 +201,12 @@ def scan_start():
                 push(stage, current, total)
 
         try:
-            debug_log.append("Calling scan_for_duplicates...")
+            debug_log.append(f"Calling scan_for_duplicates (folders={'selected' if folder_ids else 'all'})...")
             push("starting")
-            result = scan_for_duplicates(providers, threshold, progress_callback, mode=scan_mode)
+            result = scan_for_duplicates(
+                providers, threshold, progress_callback,
+                mode=scan_mode, folder_ids=folder_ids,
+            )
             _scan_results[scan_id] = result
             debug_log.append(f"Complete: {result.total_photos} photos, "
                            f"{len(result.exact_groups)} exact, "

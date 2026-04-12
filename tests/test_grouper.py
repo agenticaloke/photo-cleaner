@@ -12,7 +12,10 @@ class MockProvider:
         self._fixtures_dir = fixtures_dir
         self.provider_name = "mock"
 
-    def list_photos(self, folder_path=None, progress_callback=None):
+    def list_folders(self):
+        return []
+
+    def list_photos(self, folder_ids=None, progress_callback=None):
         if progress_callback:
             progress_callback("listing", len(self._files), len(self._files))
         return self._files

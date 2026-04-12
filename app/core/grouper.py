@@ -11,7 +11,8 @@ BATCH_SIZE = 5000
 MAX_SIMILAR_SCAN = 2000  # Max files to scan for visual similarity (thumbnail downloads)
 
 
-def scan_for_duplicates(providers, threshold=10, progress_callback=None, mode="basic"):
+def scan_for_duplicates(providers, threshold=10, progress_callback=None,
+                        mode="basic", folder_ids=None):
     """Run the full duplicate detection pipeline across all connected providers.
 
     Processes photos in batches of 5,000 to avoid memory and timeout issues
@@ -23,16 +24,19 @@ def scan_for_duplicates(providers, threshold=10, progress_callback=None, mode="b
         threshold: Hamming distance threshold for similar photos
         progress_callback: function(stage, current, total) for progress updates
         mode: "basic" for exact matches only, "advanced" for exact + similar
+        folder_ids: list of folder IDs to scan, or None for all
 
     Returns:
         ScanResult with all duplicate groups found
     """
-    # Step 1: List all photos from all providers
+    # Step 1: List photos from all providers (filtered by folder if specified)
     all_files = []
     for provider in providers:
         if progress_callback:
             progress_callback("listing", 0, 0)
-        files = provider.list_photos(progress_callback=progress_callback)
+        files = provider.list_photos(
+            folder_ids=folder_ids, progress_callback=progress_callback,
+        )
         all_files.extend(files)
 
     if not all_files:

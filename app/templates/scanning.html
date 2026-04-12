@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'Content-Type': 'application/x-www-form-urlencoded',
             'X-CSRFToken': '{{ csrf_token() }}'
         },
-        body: 'threshold={{ threshold }}&mode={{ scan_mode }}'
+        body: 'threshold={{ threshold }}&mode={{ scan_mode }}&folders={{ folder_ids }}'
     })
     .then(function(response) {
         appendDebug('Response status: ' + response.status);
