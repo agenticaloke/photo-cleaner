@@ -141,13 +141,18 @@ def scan_start():
     logger.info(f"Progress stored: {'OK' if verify else 'FAILED'}")
 
     def run_scan():
-        _append_debug(scan_id, f"Background thread started, {len(providers)} providers")
+        _append_debug(scan_id, f"Background thread started, {len(providers)} providers, mode={scan_mode}")
+
+        last_stage = [None]  # Track stage changes for debug
 
         def progress_callback(stage, current, total):
+            if stage != last_stage[0]:
+                _append_debug(scan_id, f"Stage: {stage} (total={total})")
+                last_stage[0] = stage
             _write_progress(scan_id, stage=stage, current=current, total=total)
 
         try:
-            _append_debug(scan_id, f"Calling scan_for_duplicates (mode={scan_mode})...")
+            _append_debug(scan_id, f"Calling scan_for_duplicates (mode={scan_mode}, threshold={threshold})...")
             result = scan_for_duplicates(providers, threshold, progress_callback, mode=scan_mode)
             _scan_results[scan_id] = result
             _append_debug(scan_id, f"Scan complete: {result.total_photos} photos, "
@@ -159,6 +164,7 @@ def scan_start():
             tb = traceback.format_exc()
             logger.error(f"Scan failed: {error_msg}\n{tb}")
             _append_debug(scan_id, f"ERROR: {error_msg}")
+            _append_debug(scan_id, f"TRACEBACK: {tb[-500:]}")
             _write_progress(scan_id, error=error_msg)
 
     thread = threading.Thread(target=run_scan, daemon=True)
