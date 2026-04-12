@@ -79,6 +79,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!line.trim()) return;
             try {
                 var d = JSON.parse(line);
+
+                // Skip keepalive messages
+                if (d.keepalive) {
+                    appendDebug('keepalive received');
+                    return;
+                }
+
                 appendDebug('Stream: ' + JSON.stringify(d).substring(0, 200));
 
                 if (d.scan_id) scanId = d.scan_id;

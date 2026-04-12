@@ -1,5 +1,7 @@
+import json
 import logging
 import os
+import queue
 import threading
 import tempfile
 import shutil
@@ -116,12 +118,11 @@ def scan():
 
 @web_bp.route("/scan/start", methods=["POST"])
 def scan_start():
-    """Run the scan synchronously and stream progress via SSE-style chunks.
+    """Run the scan and stream progress as newline-delimited JSON.
 
-    Instead of background thread + polling (unreliable on Render due to
-    worker restarts wiping in-memory state), this runs the scan in the
-    request thread and streams progress updates as newline-delimited JSON.
-    The last line contains {"done": true} or {"error": "..."}.
+    Uses a background thread for the actual scan work and a thread-safe
+    queue to pass progress updates back to the streaming response generator.
+    This keeps the HTTP connection alive with regular progress chunks.
     """
     logger.info(f"=== /scan/start called (PID {os.getpid()}) ===")
 
@@ -139,51 +140,77 @@ def scan_start():
     scan_id = secrets.token_urlsafe(16)
     session["scan_id"] = scan_id
 
-    def generate():
-        """Generator that runs the scan and yields progress as NDJSON."""
-        import json
+    # Thread-safe queue: scan thread pushes progress, generator yields it
+    progress_queue = queue.Queue()
 
+    def run_scan():
+        """Background thread that runs the scan and pushes progress to queue."""
         debug_log = [f"Scan started (PID {os.getpid()}, mode={scan_mode})"]
 
-        def send(stage="starting", current=0, total=0, done=False, error=None):
-            msg = {
+        def push(stage="starting", current=0, total=0, done=False, error=None):
+            progress_queue.put({
                 "scan_id": scan_id,
                 "stage": stage,
                 "current": current,
                 "total": total,
                 "done": done,
                 "error": error,
-                "debug_log": debug_log[-20:],
-                "pid": os.getpid(),
-            }
-            return json.dumps(msg) + "\n"
+                "debug_log": list(debug_log[-20:]),
+            })
 
-        yield send("starting")
-
-        last_send_time = [time.time()]
+        last_push = [0]
 
         def progress_callback(stage, current, total):
-            # Send progress at most every 1 second to avoid overwhelming the stream
             now = time.time()
-            if now - last_send_time[0] >= 1.0 or stage != "hashing":
-                last_send_time[0] = now
+            # Push at most every 0.5 seconds to keep stream flowing
+            if now - last_push[0] >= 0.5:
+                last_push[0] = now
+                push(stage, current, total)
 
         try:
-            debug_log.append(f"Calling scan_for_duplicates...")
+            debug_log.append("Calling scan_for_duplicates...")
+            push("starting")
             result = scan_for_duplicates(providers, threshold, progress_callback, mode=scan_mode)
             _scan_results[scan_id] = result
             debug_log.append(f"Complete: {result.total_photos} photos, "
                            f"{len(result.exact_groups)} exact, "
                            f"{len(result.similar_groups)} similar")
             logger.info(f"Scan {scan_id[:8]} complete")
-            yield send("done", done=True)
+            push("done", done=True)
         except Exception as e:
             error_msg = f"{type(e).__name__}: {str(e)}"
             tb = traceback.format_exc()
             logger.error(f"Scan failed: {error_msg}\n{tb}")
             debug_log.append(f"ERROR: {error_msg}")
             debug_log.append(f"TB: {tb[-300:]}")
-            yield send(error=error_msg)
+            push(error=error_msg)
+
+        # Signal that scan thread is done
+        progress_queue.put(None)
+
+    def generate():
+        """Generator that yields queued progress updates as NDJSON lines."""
+        # Start scan in background thread
+        thread = threading.Thread(target=run_scan, daemon=True)
+        thread.start()
+
+        while True:
+            try:
+                # Wait up to 2 seconds for a progress update
+                msg = progress_queue.get(timeout=2)
+            except queue.Empty:
+                # Send a keepalive to prevent proxy timeout
+                yield json.dumps({"keepalive": True, "scan_id": scan_id}) + "\n"
+                continue
+
+            if msg is None:
+                # Scan thread finished
+                break
+
+            yield json.dumps(msg) + "\n"
+
+            if msg.get("done") or msg.get("error"):
+                break
 
     return Response(
         stream_with_context(generate()),
