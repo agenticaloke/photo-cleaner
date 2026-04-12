@@ -40,7 +40,10 @@ def _download_and_hash(args):
     """Download a single thumbnail and compute its pHash. Used by thread pool."""
     cloud_file, provider, temp_dir = args
     try:
-        thumb_path = provider.download_thumbnail(cloud_file.file_id, temp_dir)
+        thumb_path = provider.download_thumbnail(
+            cloud_file.file_id, temp_dir,
+            thumbnail_url=cloud_file.thumbnail_url,
+        )
         if thumb_path:
             img = Image.open(thumb_path)
             phash = imagehash.phash(img)
@@ -69,7 +72,7 @@ def find_similar_photos(files, provider, temp_dir, threshold=10,
         futures = {pool.submit(_download_and_hash, task): task for task in tasks}
         for future in as_completed(futures):
             completed += 1
-            if progress_callback and completed % 20 == 0:
+            if progress_callback and completed % 5 == 0:
                 progress_callback("hashing", completed, total)
             result = future.result()
             if result:

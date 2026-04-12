@@ -17,7 +17,7 @@ class MockProvider:
             progress_callback("listing", len(self._files), len(self._files))
         return self._files
 
-    def download_thumbnail(self, file_id, temp_dir):
+    def download_thumbnail(self, file_id, temp_dir, thumbnail_url=None):
         if not self._fixtures_dir:
             return None
         mapping = {

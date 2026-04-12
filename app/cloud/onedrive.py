@@ -86,7 +86,7 @@ class OneDriveProvider(CloudProvider):
 
         return all_files
 
-    def download_thumbnail(self, file_id, temp_dir):
+    def download_thumbnail(self, file_id, temp_dir, thumbnail_url=None):
         """Download a medium-sized thumbnail. Returns local path or None."""
         try:
             url = f"{GRAPH_BASE}/me/drive/items/{file_id}/thumbnails/0/medium/content"

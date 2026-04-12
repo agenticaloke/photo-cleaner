@@ -85,26 +85,26 @@ class GoogleDriveProvider(CloudProvider):
 
         return all_files
 
-    def download_thumbnail(self, file_id, temp_dir):
-        """Download thumbnail for a file. Returns local path or None."""
+    def download_thumbnail(self, file_id, temp_dir, thumbnail_url=None):
+        """Download thumbnail for a file. Returns local path or None.
+
+        If thumbnail_url is provided (cached from listing), uses it directly.
+        Otherwise falls back to fetching metadata (slower, costs an API call).
+        """
         try:
-            # Use the thumbnailLink from the API (requires auth)
-            # Or use the export/thumbnail endpoint
-            url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media&acknowledgeAbuse=true"
-            # Actually, use the thumbnail endpoint for efficiency
-            url = f"https://www.googleapis.com/drive/v3/files/{file_id}/thumbnails"
+            thumb_url = thumbnail_url
+            if not thumb_url:
+                # Fallback: fetch metadata to get thumbnailLink
+                file_meta = self.service.files().get(
+                    fileId=file_id, fields="thumbnailLink"
+                ).execute()
+                thumb_url = file_meta.get("thumbnailLink")
 
-            # Simpler: re-fetch file metadata to get thumbnailLink
-            file_meta = self.service.files().get(
-                fileId=file_id, fields="thumbnailLink"
-            ).execute()
-
-            thumb_url = file_meta.get("thumbnailLink")
             if not thumb_url:
                 return None
 
             # thumbnailLink already includes auth for Google-hosted thumbnails
-            resp = http_requests.get(thumb_url, timeout=30)
+            resp = http_requests.get(thumb_url, timeout=5)
             if resp.status_code == 200:
                 path = os.path.join(temp_dir, f"gdrive_{file_id}.jpg")
                 with open(path, "wb") as f:

@@ -107,7 +107,7 @@ class TestFindSimilarPhotos:
         def __init__(self, fixtures_dir):
             self.fixtures_dir = fixtures_dir
 
-        def download_thumbnail(self, file_id, temp_dir):
+        def download_thumbnail(self, file_id, temp_dir, thumbnail_url=None):
             # Map file_id to fixture file
             mapping = {
                 "orig": "thumb_original.jpg",

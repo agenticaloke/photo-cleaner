@@ -19,8 +19,11 @@ class CloudProvider(ABC):
         ...
 
     @abstractmethod
-    def download_thumbnail(self, file_id, temp_dir):
+    def download_thumbnail(self, file_id, temp_dir, thumbnail_url=None):
         """Download a small thumbnail image.
+
+        If thumbnail_url is provided (cached from listing), uses it directly
+        to avoid an extra API call.
 
         Returns local file path to the saved thumbnail, or None on failure.
         """
