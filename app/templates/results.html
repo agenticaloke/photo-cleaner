@@ -23,7 +23,7 @@
 
     {% if result.exact_groups %}
     <h2>Exact Duplicates</h2>
-    <p><small>These files are byte-for-byte identical.</small></p>
+    <p><small>These files are byte-for-byte identical. Select which file to keep — all others will be deleted.</small></p>
 
     {% for group in result.exact_groups %}
     <article class="duplicate-group">
@@ -32,21 +32,22 @@
         </header>
         <div class="photo-grid">
             {% for file in group.files %}
-            <div class="photo-card">
+            <div class="photo-card" data-group="{{ group.group_id }}" data-file-id="{{ file.file_id }}" data-size="{{ file.size }}">
                 <img src="{{ url_for('web.thumbnail', provider=file.provider, file_id=file.file_id) }}"
                      alt="{{ file.name }}" loading="lazy">
                 <div class="photo-info">
                     <strong>{{ file.name }}</strong><br>
                     <small>{{ file.size|filesize }} &middot;
+                    {{ file.created_time[:10] if file.created_time else '' }} &middot;
                     {{ file.provider|replace('_', ' ')|title }}</small><br>
-                    {% if file.file_id == group.suggested_keep.file_id %}
-                        <span class="badge-keep">KEEP</span>
-                    {% else %}
-                        <label>
-                            <input type="checkbox" name="file_ids" value="{{ file.file_id }}" checked>
-                            Delete
-                        </label>
-                    {% endif %}
+                    <label class="keep-label">
+                        <input type="radio" name="keep_{{ group.group_id }}"
+                               value="{{ file.file_id }}"
+                               class="keep-radio"
+                               data-group="{{ group.group_id }}"
+                               {% if file.file_id == group.suggested_keep.file_id %}checked{% endif %}>
+                        Keep this file
+                    </label>
                 </div>
             </div>
             {% endfor %}
@@ -57,7 +58,7 @@
 
     {% if result.similar_groups %}
     <h2>Visually Similar</h2>
-    <p><small>These photos look alike but aren't byte-identical (resized, recompressed, etc.).</small></p>
+    <p><small>These photos look alike but aren't byte-identical. Select which file to keep.</small></p>
 
     {% for group in result.similar_groups %}
     <article class="duplicate-group">
@@ -66,21 +67,22 @@
         </header>
         <div class="photo-grid">
             {% for file in group.files %}
-            <div class="photo-card">
+            <div class="photo-card" data-group="{{ group.group_id }}" data-file-id="{{ file.file_id }}" data-size="{{ file.size }}">
                 <img src="{{ url_for('web.thumbnail', provider=file.provider, file_id=file.file_id) }}"
                      alt="{{ file.name }}" loading="lazy">
                 <div class="photo-info">
                     <strong>{{ file.name }}</strong><br>
                     <small>{{ file.size|filesize }} &middot;
+                    {{ file.created_time[:10] if file.created_time else '' }} &middot;
                     {{ file.provider|replace('_', ' ')|title }}</small><br>
-                    {% if file.file_id == group.suggested_keep.file_id %}
-                        <span class="badge-keep">KEEP</span>
-                    {% else %}
-                        <label>
-                            <input type="checkbox" name="file_ids" value="{{ file.file_id }}" checked>
-                            Delete
-                        </label>
-                    {% endif %}
+                    <label class="keep-label">
+                        <input type="radio" name="keep_{{ group.group_id }}"
+                               value="{{ file.file_id }}"
+                               class="keep-radio"
+                               data-group="{{ group.group_id }}"
+                               {% if file.file_id == group.suggested_keep.file_id %}checked{% endif %}>
+                        Keep this file
+                    </label>
                 </div>
             </div>
             {% endfor %}
@@ -89,12 +91,14 @@
     {% endfor %}
     {% endif %}
 
+    <!-- Hidden inputs for files to delete (populated by JavaScript) -->
+    <div id="delete-ids-container"></div>
+
     <div class="action-bar">
         <p>
-            <strong id="selected-count">0</strong> files selected for deletion
-            (<span id="selected-size">0 B</span>)
+            <strong id="selected-count">0</strong> files will be deleted
         </p>
-        <button type="submit" class="contrast" onclick="return confirm('Move selected files to trash? You can restore them from your cloud trash.')">
+        <button type="submit" class="contrast" onclick="return confirmDelete()">
             Move to Trash
         </button>
     </div>
@@ -105,16 +109,60 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('delete-form');
+    var form = document.getElementById('delete-form');
     if (!form) return;
 
-    function updateCount() {
-        const checked = form.querySelectorAll('input[name="file_ids"]:checked');
-        document.getElementById('selected-count').textContent = checked.length;
+    var container = document.getElementById('delete-ids-container');
+    var countDisplay = document.getElementById('selected-count');
+
+    function updateDeleteList() {
+        // Clear existing hidden inputs
+        container.innerHTML = '';
+
+        var deleteCount = 0;
+
+        // For each group, find the kept file and mark all others for deletion
+        var radios = form.querySelectorAll('.keep-radio:checked');
+        radios.forEach(function(radio) {
+            var groupId = radio.dataset.group;
+            var keepId = radio.value;
+
+            // Find all cards in this group
+            var cards = form.querySelectorAll('.photo-card[data-group="' + groupId + '"]');
+            cards.forEach(function(card) {
+                var fileId = card.dataset.fileId;
+                if (fileId !== keepId) {
+                    // Mark for deletion
+                    var input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'file_ids';
+                    input.value = fileId;
+                    container.appendChild(input);
+                    deleteCount++;
+                    card.style.opacity = '0.5';
+                } else {
+                    card.style.opacity = '1';
+                }
+            });
+        });
+
+        countDisplay.textContent = deleteCount;
     }
 
-    form.addEventListener('change', updateCount);
-    updateCount();
+    // Update on any radio change
+    form.addEventListener('change', updateDeleteList);
+
+    // Initial count
+    updateDeleteList();
 });
+
+function confirmDelete() {
+    var count = document.getElementById('selected-count').textContent;
+    if (count === '0') {
+        alert('No files selected for deletion.');
+        return false;
+    }
+    return confirm('Move ' + count + ' files to trash? You can restore them from your cloud trash.');
+}
 </script>
 {% endblock %}
