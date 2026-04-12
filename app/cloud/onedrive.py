@@ -1,6 +1,5 @@
 import os
 
-import msal
 import requests
 
 from app.cloud.base import CloudProvider
@@ -27,72 +26,83 @@ class OneDriveProvider(CloudProvider):
         return "onedrive"
 
     def list_photos(self, folder_path=None, progress_callback=None):
-        """List all image files in OneDrive with metadata and hashes."""
-        # Search for image files across the entire drive
+        """List all image files in OneDrive by walking the entire folder tree."""
         all_files = []
-        # Use search to find image files, or iterate the drive
-        url = f"{GRAPH_BASE}/me/drive/root/search(q='')"
-        params = {
-            "$select": "id,name,file,size,createdDateTime,lastModifiedDateTime,parentReference,photo",
-            "$expand": "thumbnails",
-            "$top": 200,
-        }
 
-        while url:
-            resp = requests.get(url, headers=self._headers, params=params)
-            if resp.status_code != 200:
-                break
+        # Use a stack for iterative tree traversal (avoids recursion limits)
+        # Each entry is (folder_item_path, display_path)
+        folders_to_scan = [("/me/drive/root", "")]
 
-            data = resp.json()
-            for item in data.get("value", []):
-                # Only include files (not folders) that look like images
-                if "file" not in item:
-                    continue
+        while folders_to_scan:
+            folder_api_path, display_path = folders_to_scan.pop()
+            url = f"{GRAPH_BASE}{folder_api_path}/children"
+            params = {
+                "$select": "id,name,file,folder,size,createdDateTime,lastModifiedDateTime,parentReference",
+                "$expand": "thumbnails",
+                "$top": 200,
+            }
 
-                name = item.get("name", "")
-                ext = os.path.splitext(name)[1].lower()
-                mime = item.get("file", {}).get("mimeType", "")
+            while url:
+                resp = requests.get(url, headers=self._headers, params=params)
+                if resp.status_code != 200:
+                    break
 
-                if ext not in IMAGE_EXTENSIONS and not mime.startswith("image/"):
-                    continue
+                data = resp.json()
+                for item in data.get("value", []):
+                    # If it's a folder, add to scan queue
+                    if "folder" in item:
+                        item_id = item["id"]
+                        child_path = f"{display_path}/{item['name']}"
+                        folders_to_scan.append(
+                            (f"/me/drive/items/{item_id}", child_path)
+                        )
+                        continue
 
-                # Extract hashes from the file facet
-                hashes = item.get("file", {}).get("hashes", {})
-                sha256 = hashes.get("sha256Hash")
-                if not sha256:
-                    sha256 = hashes.get("sha1Hash")  # Fallback
+                    # Only include files that are images
+                    if "file" not in item:
+                        continue
 
-                parent = item.get("parentReference", {})
-                folder = parent.get("path", "").replace("/drive/root:", "", 1)
+                    name = item.get("name", "")
+                    ext = os.path.splitext(name)[1].lower()
+                    mime = item.get("file", {}).get("mimeType", "")
 
-                # Extract thumbnail URL from expanded thumbnails
-                thumb_url = None
-                thumbnails = item.get("thumbnails", [])
-                if thumbnails:
-                    thumb_url = thumbnails[0].get("medium", {}).get("url")
-                    if not thumb_url:
-                        thumb_url = thumbnails[0].get("small", {}).get("url")
+                    if ext not in IMAGE_EXTENSIONS and not mime.startswith("image/"):
+                        continue
 
-                cf = CloudFile(
-                    file_id=item["id"],
-                    name=name,
-                    provider="onedrive",
-                    size=int(item.get("size", 0)),
-                    sha256=sha256,
-                    mime_type=mime,
-                    created_time=item.get("createdDateTime", ""),
-                    modified_time=item.get("lastModifiedDateTime", ""),
-                    thumbnail_url=thumb_url,
-                    folder_path=folder,
-                )
-                all_files.append(cf)
+                    # Extract hashes from the file facet
+                    hashes = item.get("file", {}).get("hashes", {})
+                    sha256 = hashes.get("sha256Hash")
+                    if not sha256:
+                        sha256 = hashes.get("sha1Hash")  # Fallback
 
-            if progress_callback:
-                progress_callback("listing", len(all_files), len(all_files))
+                    # Extract thumbnail URL from expanded thumbnails
+                    thumb_url = None
+                    thumbnails = item.get("thumbnails", [])
+                    if thumbnails:
+                        thumb_url = thumbnails[0].get("medium", {}).get("url")
+                        if not thumb_url:
+                            thumb_url = thumbnails[0].get("small", {}).get("url")
 
-            # Pagination
-            url = data.get("@odata.nextLink")
-            params = {}  # nextLink includes params already
+                    cf = CloudFile(
+                        file_id=item["id"],
+                        name=name,
+                        provider="onedrive",
+                        size=int(item.get("size", 0)),
+                        sha256=sha256,
+                        mime_type=mime,
+                        created_time=item.get("createdDateTime", ""),
+                        modified_time=item.get("lastModifiedDateTime", ""),
+                        thumbnail_url=thumb_url,
+                        folder_path=display_path,
+                    )
+                    all_files.append(cf)
+
+                if progress_callback:
+                    progress_callback("listing", len(all_files), len(all_files))
+
+                # Pagination within this folder
+                url = data.get("@odata.nextLink")
+                params = {}  # nextLink includes params already
 
         return all_files
 
