@@ -7,6 +7,7 @@ import time
 from flask import Flask
 from flask_session import Session
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,6 +24,11 @@ def create_app(config_name=None):
         app.config.from_object("config.ProductionConfig")
     else:
         app.config.from_object("config.DevelopmentConfig")
+
+    # Trust proxy headers from Render so url_for generates https:// URLs
+    # This prevents POST→301→GET redirects that cause 405 errors
+    if os.environ.get("FLASK_ENV") == "production":
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     Session(app)
     csrf.init_app(app)

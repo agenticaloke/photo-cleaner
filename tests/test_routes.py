@@ -41,9 +41,9 @@ class TestResultsPage:
 
 
 class TestDeleteEndpoint:
-    def test_delete_requires_post(self, client):
+    def test_delete_get_redirects_home(self, client):
         resp = client.get("/delete")
-        assert resp.status_code == 405
+        assert resp.status_code == 302
 
     def test_delete_redirects_without_data(self, client):
         resp = client.post("/delete")

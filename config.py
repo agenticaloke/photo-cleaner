@@ -19,6 +19,7 @@ class BaseConfig:
 
     PHASH_THRESHOLD = int(os.environ.get("PHASH_THRESHOLD", "10"))
     DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() == "true"
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max form submission
 
 
 class DevelopmentConfig(BaseConfig):
@@ -36,6 +37,7 @@ class ProductionConfig(BaseConfig):
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
+    PREFERRED_URL_SCHEME = "https"
 
 
 class TestingConfig(BaseConfig):

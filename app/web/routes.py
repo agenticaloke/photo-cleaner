@@ -289,10 +289,18 @@ def results():
     )
 
 
-@web_bp.route("/delete", methods=["POST"])
+@web_bp.route("/delete", methods=["GET", "POST"])
 def delete():
     """Delete selected files (move to cloud trash)."""
+    logger.info(f"=== /delete called, method={request.method} ===")
+
+    if request.method == "GET":
+        # Redirected from POST (trailing slash, proxy, etc.) — can't delete via GET
+        logger.warning("DELETE called with GET — likely a redirect from POST")
+        return redirect(url_for("web.index"))
+
     file_ids = request.form.getlist("file_ids")
+    logger.info(f"Delete requested for {len(file_ids)} files")
     if not file_ids:
         return redirect(url_for("web.results"))
 
