@@ -15,8 +15,8 @@
 <details open>
     <summary>Debug Log</summary>
     <pre id="debug-log" style="max-height: 300px; overflow-y: auto; font-size: 0.8rem; background: var(--card-background-color); padding: 1rem; border-radius: 4px;">Waiting for scan to start...</pre>
-    <p><small>Scan ID: <code id="debug-scan-id">—</code> |
-    <a href="#" id="debug-endpoint-link" target="_blank">Open /scan/debug</a></small></p>
+    <p><small>Mode: <code>{{ scan_mode }}</code> |
+    <a href="{{ url_for('web.scan_debug') }}" target="_blank">Open /scan/debug</a></small></p>
 </details>
 {% endif %}
 {% endblock %}
@@ -33,12 +33,12 @@ document.addEventListener('DOMContentLoaded', function() {
         'listing': 'Listing photos from cloud storage...',
         'exact_matching': 'Finding exact duplicates...',
         'hashing': 'Analyzing photos for visual similarity...',
+        'comparing': 'Comparing photo fingerprints...',
+        'done': 'Scan complete!',
     };
 
     var debugMode = {{ 'true' if debug_mode else 'false' }};
     var debugLog = document.getElementById('debug-log');
-    var debugScanId = document.getElementById('debug-scan-id');
-    var debugLink = document.getElementById('debug-endpoint-link');
 
     function appendDebug(msg) {
         if (!debugMode || !debugLog) return;
@@ -47,9 +47,10 @@ document.addEventListener('DOMContentLoaded', function() {
         debugLog.scrollTop = debugLog.scrollHeight;
     }
 
-    appendDebug('Starting scan request...');
+    appendDebug('Starting scan (mode={{ scan_mode }})...');
 
-    // Start the scan
+    // Use streaming fetch — scan runs synchronously on the server
+    // and streams progress as newline-delimited JSON
     fetch('{{ url_for("web.scan_start") }}', {
         method: 'POST',
         headers: {
@@ -59,83 +60,93 @@ document.addEventListener('DOMContentLoaded', function() {
         body: 'threshold={{ threshold }}&mode={{ scan_mode }}'
     })
     .then(function(response) {
-        appendDebug('scan_start response status: ' + response.status);
-        return response.json();
-    })
-    .then(function(data) {
-        appendDebug('scan_start response: ' + JSON.stringify(data));
-        if (data.error) {
-            statusText.textContent = 'Error: ' + data.error;
-            appendDebug('ERROR from scan_start: ' + data.error);
-            return;
+        appendDebug('Response status: ' + response.status);
+
+        if (!response.ok) {
+            return response.text().then(function(t) {
+                statusText.textContent = 'Error: Server returned ' + response.status;
+                appendDebug('Server error: ' + t);
+            });
         }
-        // Poll for progress every 2 seconds, passing scan_id in URL
-        var scanId = data.scan_id;
-        if (debugScanId) debugScanId.textContent = scanId;
-        if (debugLink) debugLink.href = '{{ url_for("web.scan_debug") }}?scan_id=' + scanId;
-        appendDebug('Got scan_id: ' + scanId + ', starting polling...');
-        pollProgress(scanId);
+
+        // Read the streaming response line by line
+        var reader = response.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+        var scanId = null;
+
+        function processLine(line) {
+            if (!line.trim()) return;
+            try {
+                var d = JSON.parse(line);
+                appendDebug('Stream: ' + JSON.stringify(d).substring(0, 200));
+
+                if (d.scan_id) scanId = d.scan_id;
+
+                // Show server debug log
+                if (d.debug_log && debugLog) {
+                    debugLog.textContent = 'Server log:\n' + d.debug_log.join('\n');
+                    debugLog.scrollTop = debugLog.scrollHeight;
+                }
+
+                if (d.error) {
+                    statusText.textContent = 'Error: ' + d.error;
+                    detail.textContent = 'Please try again.';
+                    appendDebug('SCAN ERROR: ' + d.error);
+                    return;
+                }
+
+                statusText.textContent = stageLabels[d.stage] || d.stage || 'Working...';
+
+                if (d.total > 0) {
+                    var pct = Math.round((d.current / d.total) * 100);
+                    progress.value = pct;
+                    detail.textContent = d.current + ' / ' + d.total + ' photos processed';
+                }
+
+                if (d.done && scanId) {
+                    statusText.textContent = 'Scan complete! Loading results...';
+                    progress.value = 100;
+                    appendDebug('Done! Redirecting to results...');
+                    window.location.href = '{{ url_for("web.results") }}?scan_id=' + scanId;
+                }
+            } catch(e) {
+                appendDebug('Parse error: ' + e + ' on: ' + line.substring(0, 100));
+            }
+        }
+
+        function readChunk() {
+            return reader.read().then(function(result) {
+                if (result.done) {
+                    // Process any remaining buffer
+                    if (buffer.trim()) processLine(buffer);
+                    if (!scanId) {
+                        statusText.textContent = 'Scan finished but no results received.';
+                        appendDebug('Stream ended without scan_id');
+                    }
+                    return;
+                }
+
+                buffer += decoder.decode(result.value, {stream: true});
+
+                // Process complete lines
+                var lines = buffer.split('\n');
+                buffer = lines.pop();  // Keep incomplete last line in buffer
+                for (var i = 0; i < lines.length; i++) {
+                    processLine(lines[i]);
+                }
+
+                return readChunk();
+            });
+        }
+
+        return readChunk();
     })
     .catch(function(err) {
-        statusText.textContent = 'Failed to start scan: ' + err;
+        statusText.textContent = 'Connection error: ' + err;
+        detail.textContent = 'The scan may still be running. Try refreshing in a minute.';
         appendDebug('FETCH ERROR: ' + err);
     });
-
-    var pollCount = 0;
-
-    function pollProgress(scanId) {
-        pollCount++;
-        fetch('{{ url_for("web.scan_progress") }}?scan_id=' + scanId)
-        .then(function(response) {
-            appendDebug('Poll #' + pollCount + ' status: ' + response.status);
-            return response.json();
-        })
-        .then(function(d) {
-            appendDebug('Poll #' + pollCount + ' data: ' + JSON.stringify(d).substring(0, 200));
-
-            // Show server-side debug log if available
-            if (d.debug_log && debugLog) {
-                debugLog.textContent = 'Server debug log:\n' + d.debug_log.join('\n');
-                debugLog.scrollTop = debugLog.scrollHeight;
-            }
-
-            if (d.error && !d.stage) {
-                statusText.textContent = 'Error: ' + d.error;
-                detail.textContent = d.debug || 'Please try again.';
-                appendDebug('ERROR: ' + d.error + ' | debug: ' + (d.debug || 'none'));
-                return;
-            }
-
-            statusText.textContent = stageLabels[d.stage] || d.stage || 'Working...';
-
-            if (d.total > 0) {
-                var pct = Math.round((d.current / d.total) * 100);
-                progress.value = pct;
-                detail.textContent = d.current + ' / ' + d.total + ' photos processed';
-            }
-
-            if (d.done) {
-                appendDebug('Scan complete! Redirecting to results...');
-                window.location.href = '{{ url_for("web.results") }}?scan_id=' + scanId;
-                return;
-            }
-
-            if (d.error) {
-                statusText.textContent = 'Error: ' + d.error;
-                detail.textContent = 'Please try again.';
-                appendDebug('SCAN ERROR: ' + d.error);
-                return;
-            }
-
-            // Poll again in 2 seconds
-            setTimeout(function() { pollProgress(scanId); }, 2000);
-        })
-        .catch(function(err) {
-            appendDebug('Poll #' + pollCount + ' NETWORK ERROR: ' + err);
-            // Retry on network error
-            setTimeout(function() { pollProgress(scanId); }, 3000);
-        });
-    }
 });
 </script>
 {% endblock %}
