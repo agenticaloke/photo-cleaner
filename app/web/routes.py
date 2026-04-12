@@ -159,12 +159,17 @@ def scan_start():
             })
 
         last_push = [0]
+        last_stage = [None]
 
         def progress_callback(stage, current, total):
             now = time.time()
-            # Push at most every 0.5 seconds to keep stream flowing
-            if now - last_push[0] >= 0.5:
+            stage_changed = stage != last_stage[0]
+            # Always push on stage change; rate-limit within same stage to 0.5s
+            if stage_changed or now - last_push[0] >= 0.5:
+                if stage_changed:
+                    debug_log.append(f"Stage: {stage} (total={total})")
                 last_push[0] = now
+                last_stage[0] = stage
                 push(stage, current, total)
 
         try:
