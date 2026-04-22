@@ -26,43 +26,67 @@ class OneDriveProvider(CloudProvider):
         return "onedrive"
 
     def list_folders(self):
-        """List folder tree from OneDrive (2 levels deep)."""
-        def get_children(api_path, depth=0):
-            if depth >= 2:
-                return []
-            folders = []
-            url = f"{GRAPH_BASE}{api_path}/children"
-            params = {
-                "$select": "id,name,folder",
-                "$top": 200,
-            }
-            while url:
-                try:
-                    resp = requests.get(
-                        url, headers=self._headers, params=params, timeout=10
-                    )
-                    if resp.status_code != 200:
-                        break
-                    data = resp.json()
-                except Exception:
-                    break
-                for item in data.get("value", []):
-                    # Only include folders (items with a "folder" facet)
-                    if "folder" not in item:
-                        continue
-                    folders.append({
-                        "id": item["id"],
-                        "name": item["name"],
-                        "children": get_children(
-                            f"/me/drive/items/{item['id']}", depth + 1
-                        ),
-                    })
-                url = data.get("@odata.nextLink")
-                params = {}
-            folders.sort(key=lambda f: f["name"].lower())
-            return folders
+        """List top-level folders only (no recursive expansion).
 
-        return get_children("/me/drive/root", depth=0)
+        Children are loaded on-demand via list_subfolders() when the user
+        expands a folder in the UI.
+        """
+        folders = []
+        url = f"{GRAPH_BASE}/me/drive/root/children"
+        params = {"$select": "id,name,folder", "$top": 200}
+        while url:
+            try:
+                resp = requests.get(
+                    url, headers=self._headers, params=params, timeout=10
+                )
+                if resp.status_code != 200:
+                    break
+                data = resp.json()
+            except Exception:
+                break
+            for item in data.get("value", []):
+                if "folder" not in item:
+                    continue
+                child_count = item.get("folder", {}).get("childCount", 0)
+                folders.append({
+                    "id": item["id"],
+                    "name": item["name"],
+                    "has_children": child_count > 0,
+                    "children": [],
+                })
+            url = data.get("@odata.nextLink")
+            params = {}
+        folders.sort(key=lambda f: f["name"].lower())
+        return folders
+
+    def list_subfolders(self, folder_id):
+        """List immediate subfolders of a given folder (one level only)."""
+        folders = []
+        url = f"{GRAPH_BASE}/me/drive/items/{folder_id}/children"
+        params = {"$select": "id,name,folder", "$top": 200}
+        while url:
+            try:
+                resp = requests.get(
+                    url, headers=self._headers, params=params, timeout=10
+                )
+                if resp.status_code != 200:
+                    break
+                data = resp.json()
+            except Exception:
+                break
+            for item in data.get("value", []):
+                if "folder" not in item:
+                    continue
+                child_count = item.get("folder", {}).get("childCount", 0)
+                folders.append({
+                    "id": item["id"],
+                    "name": item["name"],
+                    "has_children": child_count > 0,
+                })
+            url = data.get("@odata.nextLink")
+            params = {}
+        folders.sort(key=lambda f: f["name"].lower())
+        return folders
 
     def list_photos(self, folder_ids=None, progress_callback=None):
         """List image files in OneDrive.

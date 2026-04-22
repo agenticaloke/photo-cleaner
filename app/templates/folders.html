@@ -17,31 +17,30 @@
             <strong>Scan all Google Drive photos</strong>
         </label>
         <div id="gdrive-folders" style="display: none; margin-left: 1.5rem; margin-top: 0.5rem;">
-            {% for folder in folder_tree.get('google_drive', []) %}
-            <div class="folder-item">
-                <label>
-                    <input type="checkbox" name="folders" value="{{ folder.id }}"
-                           class="gdrive-folder parent-folder"
-                           data-children="{{ folder.children | map(attribute='id') | list | join(',') }}">
-                    <strong>{{ folder.name }}</strong>
-                </label>
-                {% if folder.children %}
-                <div style="margin-left: 1.5rem;">
-                    {% for child in folder.children %}
-                    <label>
-                        <input type="checkbox" name="folders" value="{{ child.id }}"
-                               class="gdrive-folder child-folder"
-                               data-parent="{{ folder.id }}">
-                        {{ child.name }}
-                    </label><br>
-                    {% endfor %}
+            <div id="gdrive-tree">
+                {% for folder in folder_tree.get('google_drive', []) %}
+                <div class="folder-row" data-provider="google_drive" data-folder-id="{{ folder.id }}" data-depth="0">
+                    <div class="folder-label" style="display:flex;align-items:center;gap:0.4rem;">
+                        <span class="expand-btn {% if folder.has_children %}has-children{% endif %}"
+                              data-folder-id="{{ folder.id }}" data-provider="google_drive"
+                              title="Expand subfolders"
+                              style="cursor:pointer;user-select:none;font-size:0.85rem;min-width:1rem;">
+                            {% if folder.has_children %}▶{% endif %}
+                        </span>
+                        <label style="margin:0;">
+                            <input type="checkbox" name="folders" value="{{ folder.id }}"
+                                   class="folder-cb" data-provider="google_drive"
+                                   data-folder-id="{{ folder.id }}" data-depth="0">
+                            <strong>{{ folder.name }}</strong>
+                        </label>
+                    </div>
+                    <div class="children-container" id="children-gdrive-{{ folder.id }}" style="display:none;margin-left:1.5rem;"></div>
                 </div>
+                {% endfor %}
+                {% if not folder_tree.get('google_drive') %}
+                <small>No folders found (photos may be in the root).</small>
                 {% endif %}
             </div>
-            {% endfor %}
-            {% if not folder_tree.get('google_drive') %}
-            <small>No folders found (photos may be in the root).</small>
-            {% endif %}
         </div>
     </article>
     {% endif %}
@@ -54,32 +53,31 @@
             <strong>Scan all OneDrive photos</strong>
         </label>
         <div id="onedrive-folders" style="display: none; margin-left: 1.5rem; margin-top: 0.5rem;">
-            {% if folder_tree.get('onedrive') %}
-                {% for folder in folder_tree.get('onedrive', []) %}
-                <div class="folder-item">
-                    <label>
-                        <input type="checkbox" name="folders" value="{{ folder.id }}"
-                               class="onedrive-folder parent-folder"
-                               data-children="{{ folder.children | map(attribute='id') | list | join(',') }}">
-                        <strong>{{ folder.name }}</strong>
-                    </label>
-                    {% if folder.children %}
-                    <div style="margin-left: 1.5rem;">
-                        {% for child in folder.children %}
-                        <label>
-                            <input type="checkbox" name="folders" value="{{ child.id }}"
-                                   class="onedrive-folder child-folder"
-                                   data-parent="{{ folder.id }}">
-                            {{ child.name }}
-                        </label><br>
-                        {% endfor %}
+            <div id="onedrive-tree">
+                {% if folder_tree.get('onedrive') %}
+                    {% for folder in folder_tree.get('onedrive', []) %}
+                    <div class="folder-row" data-provider="onedrive" data-folder-id="{{ folder.id }}" data-depth="0">
+                        <div class="folder-label" style="display:flex;align-items:center;gap:0.4rem;">
+                            <span class="expand-btn {% if folder.has_children %}has-children{% endif %}"
+                                  data-folder-id="{{ folder.id }}" data-provider="onedrive"
+                                  title="Expand subfolders"
+                                  style="cursor:pointer;user-select:none;font-size:0.85rem;min-width:1rem;">
+                                {% if folder.has_children %}▶{% endif %}
+                            </span>
+                            <label style="margin:0;">
+                                <input type="checkbox" name="folders" value="{{ folder.id }}"
+                                       class="folder-cb" data-provider="onedrive"
+                                       data-folder-id="{{ folder.id }}" data-depth="0">
+                                <strong>{{ folder.name }}</strong>
+                            </label>
+                        </div>
+                        <div class="children-container" id="children-onedrive-{{ folder.id }}" style="display:none;margin-left:1.5rem;"></div>
                     </div>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            {% else %}
-            <small>No subfolders found — all photos will be scanned from the root.</small>
-            {% endif %}
+                    {% endfor %}
+                {% else %}
+                <small>No subfolders found — all photos will be scanned from the root.</small>
+                {% endif %}
+            </div>
         </div>
     </article>
     {% endif %}
@@ -114,56 +112,165 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Toggle folder list visibility when "Scan all" is unchecked
+
+    // ── Toggle folder list visibility when "Scan all" is unchecked ──────────
     function setupToggle(allCheckboxId, folderDivId) {
         var allCb = document.getElementById(allCheckboxId);
         var folderDiv = document.getElementById(folderDivId);
         if (!allCb || !folderDiv) return;
-
         allCb.addEventListener('change', function() {
             folderDiv.style.display = allCb.checked ? 'none' : 'block';
         });
     }
-
     setupToggle('gdrive-all', 'gdrive-folders');
     setupToggle('onedrive-all', 'onedrive-folders');
 
-    // Parent-child cascading: checking a parent checks all children,
-    // unchecking a parent unchecks all children.
-    // Children can be individually unchecked without affecting parent state.
-    document.querySelectorAll('.parent-folder').forEach(function(parentCb) {
-        parentCb.addEventListener('change', function() {
-            var childIds = parentCb.dataset.children;
-            if (!childIds) return;
+    // ── Expand / collapse a folder and lazy-load its children ───────────────
+    var loadingFolders = {};   // folder IDs currently being fetched
+    var loadedFolders  = {};   // folder IDs already fetched
 
-            childIds.split(',').forEach(function(childId) {
-                if (!childId) return;
-                var childCb = document.querySelector('input[value="' + childId + '"]');
-                if (childCb) {
-                    childCb.checked = parentCb.checked;
-                }
-            });
-        });
-    });
+    function buildFolderRow(folder, provider, depth) {
+        var indentPx = depth * 24;
+        var row = document.createElement('div');
+        row.className = 'folder-row';
+        row.dataset.provider = provider;
+        row.dataset.folderId = folder.id;
+        row.dataset.depth = depth;
 
-    // When a child is checked, also check its parent (to include the parent folder)
-    document.querySelectorAll('.child-folder').forEach(function(childCb) {
-        childCb.addEventListener('change', function() {
-            if (childCb.checked) {
-                var parentId = childCb.dataset.parent;
-                if (parentId) {
-                    var parentCheckbox = document.querySelector('.parent-folder[value="' + parentId + '"]');
-                    if (parentCheckbox && !parentCheckbox.checked) {
-                        // Don't cascade — just check the parent without triggering its event
-                        parentCheckbox.checked = true;
+        var labelDiv = document.createElement('div');
+        labelDiv.className = 'folder-label';
+        labelDiv.style.cssText = 'display:flex;align-items:center;gap:0.4rem;';
+
+        var expandBtn = document.createElement('span');
+        expandBtn.className = 'expand-btn' + (folder.has_children ? ' has-children' : '');
+        expandBtn.dataset.folderId = folder.id;
+        expandBtn.dataset.provider = provider;
+        expandBtn.title = 'Expand subfolders';
+        expandBtn.style.cssText = 'cursor:pointer;user-select:none;font-size:0.85rem;min-width:1rem;';
+        expandBtn.textContent = folder.has_children ? '▶' : '';
+
+        var lbl = document.createElement('label');
+        lbl.style.margin = '0';
+
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.name = 'folders';
+        cb.value = folder.id;
+        cb.className = 'folder-cb';
+        cb.dataset.provider = provider;
+        cb.dataset.folderId = folder.id;
+        cb.dataset.depth = depth;
+
+        lbl.appendChild(cb);
+        lbl.appendChild(document.createTextNode(' ' + folder.name));
+
+        labelDiv.appendChild(expandBtn);
+        labelDiv.appendChild(lbl);
+
+        var childContainer = document.createElement('div');
+        childContainer.className = 'children-container';
+        childContainer.id = 'children-' + provider + '-' + folder.id;
+        childContainer.style.cssText = 'display:none;margin-left:1.5rem;';
+
+        row.appendChild(labelDiv);
+        row.appendChild(childContainer);
+
+        // Wire up events after appending
+        expandBtn.addEventListener('click', handleExpandClick);
+        cb.addEventListener('change', handleFolderCheck);
+
+        return row;
+    }
+
+    function handleExpandClick(e) {
+        var btn = e.currentTarget;
+        var folderId = btn.dataset.folderId;
+        var provider = btn.dataset.provider;
+        var container = document.getElementById('children-' + provider + '-' + folderId);
+        if (!container) return;
+
+        var isExpanded = container.style.display !== 'none';
+        if (isExpanded) {
+            container.style.display = 'none';
+            btn.textContent = '▶';
+            return;
+        }
+
+        // Expand — load children if not yet fetched
+        container.style.display = 'block';
+        btn.textContent = '▼';
+
+        if (!loadedFolders[provider + folderId] && !loadingFolders[provider + folderId]) {
+            loadingFolders[provider + folderId] = true;
+            container.innerHTML = '<small aria-busy="true">Loading…</small>';
+
+            fetch('/folders/subfolders?provider=' + encodeURIComponent(provider) +
+                  '&folder_id=' + encodeURIComponent(folderId))
+                .then(function(r) { return r.json(); })
+                .then(function(subfolders) {
+                    delete loadingFolders[provider + folderId];
+                    loadedFolders[provider + folderId] = true;
+                    container.innerHTML = '';
+
+                    if (!Array.isArray(subfolders) || subfolders.length === 0) {
+                        container.innerHTML = '<small style="color:var(--muted-color)">No subfolders</small>';
+                        // Update expand btn since there are no children after all
+                        btn.textContent = '';
+                        btn.classList.remove('has-children');
+                        return;
                     }
-                }
+
+                    var parentDepth = parseInt(btn.closest('.folder-row').dataset.depth || 0);
+                    subfolders.forEach(function(sf) {
+                        var childRow = buildFolderRow(sf, provider, parentDepth + 1);
+                        container.appendChild(childRow);
+                    });
+                })
+                .catch(function(err) {
+                    delete loadingFolders[provider + folderId];
+                    container.innerHTML = '<small style="color:red">Failed to load subfolders</small>';
+                });
+        }
+    }
+
+    function handleFolderCheck(e) {
+        var cb = e.currentTarget;
+        var folderId = cb.dataset.folderId;
+        var provider = cb.dataset.provider;
+        var container = document.getElementById('children-' + provider + '-' + folderId);
+
+        if (cb.checked) {
+            // Auto-expand to show children (visual hint they're included)
+            if (container && container.style.display === 'none') {
+                var expandBtn = cb.closest('.folder-label').querySelector('.expand-btn.has-children');
+                if (expandBtn) expandBtn.click();
             }
-        });
+            // Check all already-loaded child checkboxes
+            if (container) {
+                container.querySelectorAll('.folder-cb').forEach(function(childCb) {
+                    childCb.checked = true;
+                });
+            }
+        } else {
+            // Uncheck all already-loaded child checkboxes
+            if (container) {
+                container.querySelectorAll('.folder-cb').forEach(function(childCb) {
+                    childCb.checked = false;
+                });
+            }
+        }
+    }
+
+    // Wire up expand buttons and checkboxes on the server-rendered top-level rows
+    document.querySelectorAll('.expand-btn.has-children').forEach(function(btn) {
+        btn.addEventListener('click', handleExpandClick);
+    });
+    document.querySelectorAll('.folder-cb').forEach(function(cb) {
+        cb.addEventListener('change', handleFolderCheck);
     });
 
-    // Threshold slider
-    var slider = document.getElementById('threshold');
+    // ── Threshold slider ────────────────────────────────────────────────────
+    var slider  = document.getElementById('threshold');
     var display = document.getElementById('threshold-value');
     if (slider && display) {
         slider.addEventListener('input', function() {
@@ -171,32 +278,29 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Collect selected folder IDs
+    // ── Collect selected folder IDs for the scan URL ────────────────────────
     function getSelectedFolders() {
         var ids = [];
-        var gdriveAll = document.getElementById('gdrive-all');
+        var gdriveAll   = document.getElementById('gdrive-all');
         var onedriveAll = document.getElementById('onedrive-all');
 
-        // If "scan all" is unchecked, collect checked folder checkboxes
         if (gdriveAll && !gdriveAll.checked) {
-            document.querySelectorAll('.gdrive-folder:checked').forEach(function(cb) {
+            document.querySelectorAll('#gdrive-tree .folder-cb:checked').forEach(function(cb) {
                 ids.push(cb.value);
             });
         }
         if (onedriveAll && !onedriveAll.checked) {
-            document.querySelectorAll('.onedrive-folder:checked').forEach(function(cb) {
+            document.querySelectorAll('#onedrive-tree .folder-cb:checked').forEach(function(cb) {
                 ids.push(cb.value);
             });
         }
-
-        // Empty means "scan all"
         return ids.join(',');
     }
 
     function startScan(mode) {
-        var folders = getSelectedFolders();
+        var folders   = getSelectedFolders();
         var threshold = slider ? slider.value : '10';
-        var params = 'mode=' + mode + '&threshold=' + threshold;
+        var params    = 'mode=' + mode + '&threshold=' + threshold;
         if (folders) {
             params += '&folders=' + encodeURIComponent(folders);
         }

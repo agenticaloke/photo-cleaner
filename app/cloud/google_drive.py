@@ -33,36 +33,42 @@ class GoogleDriveProvider(CloudProvider):
         return "google_drive"
 
     def list_folders(self):
-        """List folder tree from Google Drive (2 levels deep)."""
-        def get_children(parent_id, depth=0):
-            if depth >= 2:
-                return []
-            folders = []
-            query = (
-                f"'{parent_id}' in parents and "
-                "mimeType='application/vnd.google-apps.folder' and trashed=false"
-            )
-            page_token = None
-            while True:
+        """List top-level folders only (no recursive expansion).
+
+        Children are loaded on-demand via list_subfolders() when the user
+        expands a folder in the UI.
+        """
+        return self.list_subfolders("root")
+
+    def list_subfolders(self, folder_id):
+        """List immediate subfolders of a given folder (one level only)."""
+        folders = []
+        query = (
+            f"'{folder_id}' in parents and "
+            "mimeType='application/vnd.google-apps.folder' and trashed=false"
+        )
+        page_token = None
+        while True:
+            try:
                 resp = self.service.files().list(
                     q=query,
                     fields="nextPageToken, files(id, name)",
-                    pageSize=100,
+                    pageSize=200,
                     pageToken=page_token,
                 ).execute()
-                for item in resp.get("files", []):
-                    folders.append({
-                        "id": item["id"],
-                        "name": item["name"],
-                        "children": get_children(item["id"], depth + 1),
-                    })
-                page_token = resp.get("nextPageToken")
-                if not page_token:
-                    break
-            folders.sort(key=lambda f: f["name"].lower())
-            return folders
-
-        return get_children("root", depth=0)
+            except Exception:
+                break
+            for item in resp.get("files", []):
+                folders.append({
+                    "id": item["id"],
+                    "name": item["name"],
+                    "has_children": True,  # We don't know without a query; assume yes
+                })
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+        folders.sort(key=lambda f: f["name"].lower())
+        return folders
 
     def list_photos(self, folder_ids=None, progress_callback=None):
         """List image files in Google Drive.

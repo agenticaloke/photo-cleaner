@@ -100,6 +100,28 @@ def index():
     )
 
 
+@web_bp.route("/folders/subfolders")
+def folders_subfolders():
+    """AJAX: return immediate subfolders of a given folder as JSON."""
+    provider_name = request.args.get("provider")
+    folder_id = request.args.get("folder_id")
+    if not provider_name or not folder_id:
+        return jsonify({"error": "Missing provider or folder_id"}), 400
+
+    providers = _get_providers()
+    provider_map = {p.provider_name: p for p in providers}
+    p = provider_map.get(provider_name)
+    if not p:
+        return jsonify({"error": "Provider not connected"}), 400
+
+    try:
+        subfolders = p.list_subfolders(folder_id)
+        return jsonify(subfolders)
+    except Exception as e:
+        logger.error(f"list_subfolders failed for {provider_name}/{folder_id}: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @web_bp.route("/folders/debug")
 def folders_debug():
     """Debug: show raw Graph API response for OneDrive root children."""
