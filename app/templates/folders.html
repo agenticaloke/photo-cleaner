@@ -113,24 +113,49 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
+    // ── Per-provider subfolder cache (populated by batch prefetch) ──────────
+    // subfoldersCache[provider][folderId] = array of child folder objects
+    var subfoldersCache = { google_drive: {}, onedrive: {} };
+    var prefetchPending = {};  // provider -> true while batch fetch is in flight
+
+    function prefetchSubfolders(provider, treeId) {
+        if (prefetchPending[provider]) return;
+        var folderIds = [];
+        document.querySelectorAll('#' + treeId + ' .expand-btn.has-children').forEach(function(btn) {
+            folderIds.push(btn.dataset.folderId);
+        });
+        if (!folderIds.length) return;
+
+        prefetchPending[provider] = true;
+        fetch('/folders/subfolders/batch?provider=' + encodeURIComponent(provider) +
+              '&folder_ids=' + encodeURIComponent(folderIds.join(',')))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                // data = { folderId: [children], ... }
+                Object.keys(data).forEach(function(fid) {
+                    subfoldersCache[provider][fid] = data[fid];
+                });
+            })
+            .catch(function() { /* silent — expand will fall back to single fetch */ })
+            .finally(function() { prefetchPending[provider] = false; });
+    }
+
     // ── Toggle folder list visibility when "Scan all" is unchecked ──────────
-    function setupToggle(allCheckboxId, folderDivId) {
+    function setupToggle(allCheckboxId, folderDivId, provider, treeId) {
         var allCb = document.getElementById(allCheckboxId);
         var folderDiv = document.getElementById(folderDivId);
         if (!allCb || !folderDiv) return;
         allCb.addEventListener('change', function() {
             folderDiv.style.display = allCb.checked ? 'none' : 'block';
+            // Kick off background prefetch the first time the picker is shown
+            if (!allCb.checked) prefetchSubfolders(provider, treeId);
         });
     }
-    setupToggle('gdrive-all', 'gdrive-folders');
-    setupToggle('onedrive-all', 'onedrive-folders');
+    setupToggle('gdrive-all',    'gdrive-folders',    'google_drive', 'gdrive-tree');
+    setupToggle('onedrive-all',  'onedrive-folders',  'onedrive',     'onedrive-tree');
 
-    // ── Expand / collapse a folder and lazy-load its children ───────────────
-    var loadingFolders = {};   // folder IDs currently being fetched
-    var loadedFolders  = {};   // folder IDs already fetched
-
+    // ── Build a folder row element dynamically ───────────────────────────────
     function buildFolderRow(folder, provider, depth) {
-        var indentPx = depth * 24;
         var row = document.createElement('div');
         row.className = 'folder-row';
         row.dataset.provider = provider;
@@ -151,7 +176,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
         var lbl = document.createElement('label');
         lbl.style.margin = '0';
-
         var cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.name = 'folders';
@@ -160,7 +184,6 @@ document.addEventListener('DOMContentLoaded', function() {
         cb.dataset.provider = provider;
         cb.dataset.folderId = folder.id;
         cb.dataset.depth = depth;
-
         lbl.appendChild(cb);
         lbl.appendChild(document.createTextNode(' ' + folder.name));
 
@@ -175,13 +198,47 @@ document.addEventListener('DOMContentLoaded', function() {
         row.appendChild(labelDiv);
         row.appendChild(childContainer);
 
-        // Wire up events after appending
         expandBtn.addEventListener('click', handleExpandClick);
         cb.addEventListener('change', handleFolderCheck);
-
         return row;
     }
 
+    // ── Populate a container from cache or a single-folder fetch ────────────
+    function populateContainer(container, btn, folderId, provider) {
+        var cached = subfoldersCache[provider] && subfoldersCache[provider][folderId];
+        if (cached !== undefined) {
+            renderChildren(container, btn, cached, provider);
+            return;
+        }
+        // Not in cache yet — fetch individually
+        container.innerHTML = '<small aria-busy="true">Loading…</small>';
+        fetch('/folders/subfolders?provider=' + encodeURIComponent(provider) +
+              '&folder_id=' + encodeURIComponent(folderId))
+            .then(function(r) { return r.json(); })
+            .then(function(subfolders) {
+                subfoldersCache[provider][folderId] = subfolders;
+                renderChildren(container, btn, subfolders, provider);
+            })
+            .catch(function() {
+                container.innerHTML = '<small style="color:red">Failed to load subfolders</small>';
+            });
+    }
+
+    function renderChildren(container, btn, subfolders, provider) {
+        container.innerHTML = '';
+        if (!Array.isArray(subfolders) || subfolders.length === 0) {
+            container.innerHTML = '<small style="color:var(--muted-color)">No subfolders</small>';
+            btn.textContent = '';
+            btn.classList.remove('has-children');
+            return;
+        }
+        var parentDepth = parseInt(btn.closest('.folder-row').dataset.depth || 0);
+        subfolders.forEach(function(sf) {
+            container.appendChild(buildFolderRow(sf, provider, parentDepth + 1));
+        });
+    }
+
+    // ── Expand / collapse click ──────────────────────────────────────────────
     function handleExpandClick(e) {
         var btn = e.currentTarget;
         var folderId = btn.dataset.folderId;
@@ -195,44 +252,17 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.textContent = '▶';
             return;
         }
-
-        // Expand — load children if not yet fetched
         container.style.display = 'block';
         btn.textContent = '▼';
 
-        if (!loadedFolders[provider + folderId] && !loadingFolders[provider + folderId]) {
-            loadingFolders[provider + folderId] = true;
-            container.innerHTML = '<small aria-busy="true">Loading…</small>';
-
-            fetch('/folders/subfolders?provider=' + encodeURIComponent(provider) +
-                  '&folder_id=' + encodeURIComponent(folderId))
-                .then(function(r) { return r.json(); })
-                .then(function(subfolders) {
-                    delete loadingFolders[provider + folderId];
-                    loadedFolders[provider + folderId] = true;
-                    container.innerHTML = '';
-
-                    if (!Array.isArray(subfolders) || subfolders.length === 0) {
-                        container.innerHTML = '<small style="color:var(--muted-color)">No subfolders</small>';
-                        // Update expand btn since there are no children after all
-                        btn.textContent = '';
-                        btn.classList.remove('has-children');
-                        return;
-                    }
-
-                    var parentDepth = parseInt(btn.closest('.folder-row').dataset.depth || 0);
-                    subfolders.forEach(function(sf) {
-                        var childRow = buildFolderRow(sf, provider, parentDepth + 1);
-                        container.appendChild(childRow);
-                    });
-                })
-                .catch(function(err) {
-                    delete loadingFolders[provider + folderId];
-                    container.innerHTML = '<small style="color:red">Failed to load subfolders</small>';
-                });
+        // Only populate once
+        if (!container.dataset.loaded) {
+            container.dataset.loaded = '1';
+            populateContainer(container, btn, folderId, provider);
         }
     }
 
+    // ── Folder checkbox: cascade check/uncheck to loaded children ───────────
     function handleFolderCheck(e) {
         var cb = e.currentTarget;
         var folderId = cb.dataset.folderId;
@@ -240,28 +270,22 @@ document.addEventListener('DOMContentLoaded', function() {
         var container = document.getElementById('children-' + provider + '-' + folderId);
 
         if (cb.checked) {
-            // Auto-expand to show children (visual hint they're included)
+            // Auto-expand to show children
             if (container && container.style.display === 'none') {
                 var expandBtn = cb.closest('.folder-label').querySelector('.expand-btn.has-children');
                 if (expandBtn) expandBtn.click();
             }
-            // Check all already-loaded child checkboxes
             if (container) {
-                container.querySelectorAll('.folder-cb').forEach(function(childCb) {
-                    childCb.checked = true;
-                });
+                container.querySelectorAll('.folder-cb').forEach(function(c) { c.checked = true; });
             }
         } else {
-            // Uncheck all already-loaded child checkboxes
             if (container) {
-                container.querySelectorAll('.folder-cb').forEach(function(childCb) {
-                    childCb.checked = false;
-                });
+                container.querySelectorAll('.folder-cb').forEach(function(c) { c.checked = false; });
             }
         }
     }
 
-    // Wire up expand buttons and checkboxes on the server-rendered top-level rows
+    // Wire up server-rendered top-level rows
     document.querySelectorAll('.expand-btn.has-children').forEach(function(btn) {
         btn.addEventListener('click', handleExpandClick);
     });

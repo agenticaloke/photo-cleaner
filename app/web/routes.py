@@ -122,6 +122,42 @@ def folders_subfolders():
         return jsonify({"error": str(e)}), 500
 
 
+@web_bp.route("/folders/subfolders/batch")
+def folders_subfolders_batch():
+    """AJAX: fetch subfolders for multiple folder IDs in parallel (single round-trip)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    provider_name = request.args.get("provider")
+    folder_ids_str = request.args.get("folder_ids", "")
+    folder_ids = [f.strip() for f in folder_ids_str.split(",") if f.strip()]
+
+    if not provider_name or not folder_ids:
+        return jsonify({"error": "Missing provider or folder_ids"}), 400
+
+    providers = _get_providers()
+    provider_map = {p.provider_name: p for p in providers}
+    p = provider_map.get(provider_name)
+    if not p:
+        return jsonify({"error": "Provider not connected"}), 400
+
+    def fetch_one(fid):
+        try:
+            return fid, p.list_subfolders(fid)
+        except Exception as e:
+            logger.error(f"list_subfolders failed for {provider_name}/{fid}: {e}")
+            return fid, []
+
+    results = {}
+    max_workers = min(len(folder_ids), 10)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(fetch_one, fid): fid for fid in folder_ids}
+        for future in as_completed(futures):
+            fid, children = future.result()
+            results[fid] = children
+
+    return jsonify(results)
+
+
 @web_bp.route("/folders/debug")
 def folders_debug():
     """Debug: show raw Graph API response for OneDrive root children."""
