@@ -100,6 +100,27 @@ def index():
     )
 
 
+@web_bp.route("/folders/debug")
+def folders_debug():
+    """Debug: show raw Graph API response for OneDrive root children."""
+    import requests as req
+    token = session.get("ms_token")
+    if not token:
+        return jsonify({"error": "Not connected to OneDrive"})
+
+    headers = {"Authorization": f"Bearer {token}"}
+    url = "https://graph.microsoft.com/v1.0/me/drive/root/children"
+    params = {"$select": "id,name,folder,file", "$top": 10}
+    try:
+        resp = req.get(url, headers=headers, params=params, timeout=10)
+        return jsonify({
+            "status_code": resp.status_code,
+            "response": resp.json(),
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
 @web_bp.route("/folders")
 def folders():
     """Show folder picker so users can choose which folders to scan."""
@@ -114,12 +135,14 @@ def folders():
         try:
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(p.list_folders)
-                folder_tree[p.provider_name] = future.result(timeout=15)
+                result = future.result(timeout=15)
+                logger.info(f"list_folders for {p.provider_name}: {len(result)} folders")
+                folder_tree[p.provider_name] = result
         except FuturesTimeout:
             logger.error(f"list_folders timed out for {p.provider_name}")
             folder_tree[p.provider_name] = []
         except Exception as e:
-            logger.error(f"Failed to list folders for {p.provider_name}: {e}")
+            logger.error(f"Failed to list folders for {p.provider_name}: {e}", exc_info=True)
             folder_tree[p.provider_name] = []
 
     return render_template(
