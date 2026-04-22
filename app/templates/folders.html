@@ -113,31 +113,55 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
-    // ── Per-provider subfolder cache (populated by batch prefetch) ──────────
+    // ── Per-provider subfolder cache ─────────────────────────────────────────
     // subfoldersCache[provider][folderId] = array of child folder objects
     var subfoldersCache = { google_drive: {}, onedrive: {} };
-    var prefetchPending = {};  // provider -> true while batch fetch is in flight
+    var MAX_PREFETCH_DEPTH = 2;   // prefetch 2 levels deep automatically
 
-    function prefetchSubfolders(provider, treeId) {
-        if (prefetchPending[provider]) return;
+    // Batch-fetch subfolders for an array of folder IDs, then recursively
+    // prefetch their children (up to MAX_PREFETCH_DEPTH levels deep).
+    function batchPrefetch(provider, folderIds, depth) {
+        if (!folderIds.length || depth > MAX_PREFETCH_DEPTH) return;
+
+        // Filter out IDs already in cache
+        var toFetch = folderIds.filter(function(id) {
+            return !(id in subfoldersCache[provider]);
+        });
+        if (!toFetch.length) return;
+
+        // Mark as pending so duplicate requests don't fire
+        toFetch.forEach(function(id) { subfoldersCache[provider][id] = null; });
+
+        fetch('/folders/subfolders/batch?provider=' + encodeURIComponent(provider) +
+              '&folder_ids=' + encodeURIComponent(toFetch.join(',')))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var nextLevel = [];
+                Object.keys(data).forEach(function(fid) {
+                    subfoldersCache[provider][fid] = data[fid];
+                    // Collect grandchildren that have sub-items
+                    if (Array.isArray(data[fid])) {
+                        data[fid].forEach(function(child) {
+                            if (child.has_children) nextLevel.push(child.id);
+                        });
+                    }
+                });
+                // Recursively prefetch next level
+                if (nextLevel.length) batchPrefetch(provider, nextLevel, depth + 1);
+            })
+            .catch(function() {
+                // On error, clear the pending markers so expand can retry
+                toFetch.forEach(function(id) { delete subfoldersCache[provider][id]; });
+            });
+    }
+
+    // Kick off prefetch for all top-level folders visible in a tree
+    function prefetchTree(provider, treeId) {
         var folderIds = [];
         document.querySelectorAll('#' + treeId + ' .expand-btn.has-children').forEach(function(btn) {
             folderIds.push(btn.dataset.folderId);
         });
-        if (!folderIds.length) return;
-
-        prefetchPending[provider] = true;
-        fetch('/folders/subfolders/batch?provider=' + encodeURIComponent(provider) +
-              '&folder_ids=' + encodeURIComponent(folderIds.join(',')))
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                // data = { folderId: [children], ... }
-                Object.keys(data).forEach(function(fid) {
-                    subfoldersCache[provider][fid] = data[fid];
-                });
-            })
-            .catch(function() { /* silent — expand will fall back to single fetch */ })
-            .finally(function() { prefetchPending[provider] = false; });
+        batchPrefetch(provider, folderIds, 1);
     }
 
     // ── Toggle folder list visibility when "Scan all" is unchecked ──────────
@@ -147,12 +171,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!allCb || !folderDiv) return;
         allCb.addEventListener('change', function() {
             folderDiv.style.display = allCb.checked ? 'none' : 'block';
-            // Kick off background prefetch the first time the picker is shown
-            if (!allCb.checked) prefetchSubfolders(provider, treeId);
         });
     }
     setupToggle('gdrive-all',    'gdrive-folders',    'google_drive', 'gdrive-tree');
     setupToggle('onedrive-all',  'onedrive-folders',  'onedrive',     'onedrive-tree');
+
+    // ── Prefetch starts immediately on page load (background) ────────────────
+    // Data arrives before the user even unchecks "Scan all", so expand is instant.
+    prefetchTree('google_drive', 'gdrive-tree');
+    prefetchTree('onedrive',     'onedrive-tree');
 
     // ── Build a folder row element dynamically ───────────────────────────────
     function buildFolderRow(folder, provider, depth, parentFolderId) {
@@ -204,15 +231,38 @@ document.addEventListener('DOMContentLoaded', function() {
         return row;
     }
 
-    // ── Populate a container from cache or a single-folder fetch ────────────
+    // ── Populate a container from cache or wait/fetch ────────────────────────
     function populateContainer(container, btn, folderId, provider) {
-        var cached = subfoldersCache[provider] && subfoldersCache[provider][folderId];
-        if (cached !== undefined) {
+        var cached = subfoldersCache[provider][folderId];
+
+        if (cached !== null && cached !== undefined) {
+            // Already in cache — instant render
             renderChildren(container, btn, cached, provider);
             return;
         }
-        // Not in cache yet — fetch individually
+
+        if (cached === null) {
+            // Batch prefetch is in flight — poll briefly then render when ready
+            container.innerHTML = '<small aria-busy="true">Loading…</small>';
+            var attempts = 0;
+            var poll = setInterval(function() {
+                var result = subfoldersCache[provider][folderId];
+                if (result !== null && result !== undefined) {
+                    clearInterval(poll);
+                    renderChildren(container, btn, result, provider);
+                } else if (++attempts > 30) {
+                    // Gave up after ~3 s — fall through to single fetch
+                    clearInterval(poll);
+                    delete subfoldersCache[provider][folderId];
+                    populateContainer(container, btn, folderId, provider);
+                }
+            }, 100);
+            return;
+        }
+
+        // Not in cache at all — fetch individually
         container.innerHTML = '<small aria-busy="true">Loading…</small>';
+        subfoldersCache[provider][folderId] = null;  // mark pending
         fetch('/folders/subfolders?provider=' + encodeURIComponent(provider) +
               '&folder_id=' + encodeURIComponent(folderId))
             .then(function(r) { return r.json(); })
@@ -221,6 +271,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 renderChildren(container, btn, subfolders, provider);
             })
             .catch(function() {
+                delete subfoldersCache[provider][folderId];
                 container.innerHTML = '<small style="color:red">Failed to load subfolders</small>';
             });
     }
