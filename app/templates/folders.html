@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', function() {
     setupToggle('onedrive-all',  'onedrive-folders',  'onedrive',     'onedrive-tree');
 
     // ── Build a folder row element dynamically ───────────────────────────────
-    function buildFolderRow(folder, provider, depth) {
+    function buildFolderRow(folder, provider, depth, parentFolderId) {
         var row = document.createElement('div');
         row.className = 'folder-row';
         row.dataset.provider = provider;
@@ -184,6 +184,7 @@ document.addEventListener('DOMContentLoaded', function() {
         cb.dataset.provider = provider;
         cb.dataset.folderId = folder.id;
         cb.dataset.depth = depth;
+        if (parentFolderId) cb.dataset.parentId = parentFolderId;
         lbl.appendChild(cb);
         lbl.appendChild(document.createTextNode(' ' + folder.name));
 
@@ -232,9 +233,11 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.classList.remove('has-children');
             return;
         }
-        var parentDepth = parseInt(btn.closest('.folder-row').dataset.depth || 0);
+        var parentRow = btn.closest('.folder-row');
+        var parentDepth = parseInt(parentRow.dataset.depth || 0);
+        var parentFolderId = parentRow.dataset.folderId;
         subfolders.forEach(function(sf) {
-            container.appendChild(buildFolderRow(sf, provider, parentDepth + 1));
+            container.appendChild(buildFolderRow(sf, provider, parentDepth + 1, parentFolderId));
         });
     }
 
@@ -270,15 +273,32 @@ document.addEventListener('DOMContentLoaded', function() {
         var container = document.getElementById('children-' + provider + '-' + folderId);
 
         if (cb.checked) {
+            // Uncheck direct parent so we don't scan the whole parent folder.
+            // Only uncheck — don't cascade: siblings stay as they are.
+            var parentId = cb.dataset.parentId;
+            if (parentId) {
+                var parentCb = document.querySelector(
+                    '.folder-cb[data-provider="' + provider + '"][data-folder-id="' + parentId + '"]'
+                );
+                if (parentCb && parentCb.checked) {
+                    // Temporarily remove listener to avoid re-entrant cascade
+                    parentCb.removeEventListener('change', handleFolderCheck);
+                    parentCb.checked = false;
+                    parentCb.addEventListener('change', handleFolderCheck);
+                }
+            }
+
             // Auto-expand to show children
             if (container && container.style.display === 'none') {
                 var expandBtn = cb.closest('.folder-label').querySelector('.expand-btn.has-children');
                 if (expandBtn) expandBtn.click();
             }
+            // Cascade check to all loaded children
             if (container) {
                 container.querySelectorAll('.folder-cb').forEach(function(c) { c.checked = true; });
             }
         } else {
+            // Cascade uncheck to all loaded children
             if (container) {
                 container.querySelectorAll('.folder-cb').forEach(function(c) { c.checked = false; });
             }
