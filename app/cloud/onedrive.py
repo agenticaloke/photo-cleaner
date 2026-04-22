@@ -34,15 +34,20 @@ class OneDriveProvider(CloudProvider):
             url = f"{GRAPH_BASE}{api_path}/children"
             params = {
                 "$select": "id,name,folder",
-                "$filter": "folder ne null",
                 "$top": 200,
             }
             while url:
-                resp = requests.get(url, headers=self._headers, params=params)
-                if resp.status_code != 200:
+                try:
+                    resp = requests.get(
+                        url, headers=self._headers, params=params, timeout=10
+                    )
+                    if resp.status_code != 200:
+                        break
+                    data = resp.json()
+                except Exception:
                     break
-                data = resp.json()
                 for item in data.get("value", []):
+                    # Only include folders (items with a "folder" facet)
                     if "folder" not in item:
                         continue
                     folders.append({

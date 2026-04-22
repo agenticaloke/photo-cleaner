@@ -54,30 +54,31 @@
             <strong>Scan all OneDrive photos</strong>
         </label>
         <div id="onedrive-folders" style="display: none; margin-left: 1.5rem; margin-top: 0.5rem;">
-            {% for folder in folder_tree.get('onedrive', []) %}
-            <div class="folder-item">
-                <label>
-                    <input type="checkbox" name="folders" value="{{ folder.id }}"
-                           class="onedrive-folder parent-folder"
-                           data-children="{{ folder.children | map(attribute='id') | list | join(',') }}">
-                    <strong>{{ folder.name }}</strong>
-                </label>
-                {% if folder.children %}
-                <div style="margin-left: 1.5rem;">
-                    {% for child in folder.children %}
+            {% if folder_tree.get('onedrive') %}
+                {% for folder in folder_tree.get('onedrive', []) %}
+                <div class="folder-item">
                     <label>
-                        <input type="checkbox" name="folders" value="{{ child.id }}"
-                               class="onedrive-folder child-folder"
-                               data-parent="{{ folder.id }}">
-                        {{ child.name }}
-                    </label><br>
-                    {% endfor %}
+                        <input type="checkbox" name="folders" value="{{ folder.id }}"
+                               class="onedrive-folder parent-folder"
+                               data-children="{{ folder.children | map(attribute='id') | list | join(',') }}">
+                        <strong>{{ folder.name }}</strong>
+                    </label>
+                    {% if folder.children %}
+                    <div style="margin-left: 1.5rem;">
+                        {% for child in folder.children %}
+                        <label>
+                            <input type="checkbox" name="folders" value="{{ child.id }}"
+                                   class="onedrive-folder child-folder"
+                                   data-parent="{{ folder.id }}">
+                            {{ child.name }}
+                        </label><br>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
                 </div>
-                {% endif %}
-            </div>
-            {% endfor %}
-            {% if not folder_tree.get('onedrive') %}
-            <small>No folders found (photos may be in the root).</small>
+                {% endfor %}
+            {% else %}
+            <small>No subfolders found — all photos will be scanned from the root.</small>
             {% endif %}
         </div>
     </article>

@@ -103,6 +103,8 @@ def index():
 @web_bp.route("/folders")
 def folders():
     """Show folder picker so users can choose which folders to scan."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
     providers = _get_providers()
     if not providers:
         return redirect(url_for("web.index"))
@@ -110,7 +112,12 @@ def folders():
     folder_tree = {}
     for p in providers:
         try:
-            folder_tree[p.provider_name] = p.list_folders()
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(p.list_folders)
+                folder_tree[p.provider_name] = future.result(timeout=15)
+        except FuturesTimeout:
+            logger.error(f"list_folders timed out for {p.provider_name}")
+            folder_tree[p.provider_name] = []
         except Exception as e:
             logger.error(f"Failed to list folders for {p.provider_name}: {e}")
             folder_tree[p.provider_name] = []
