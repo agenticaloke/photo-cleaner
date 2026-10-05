@@ -16,6 +16,7 @@ from flask import (
 from app.cloud.google_drive import GoogleDriveProvider
 from app.cloud.google_photos import GooglePhotosProvider
 from app.cloud.onedrive import OneDriveProvider
+from app.cloud.amazon_photos import AmazonPhotosProvider
 from app.core.grouper import scan_for_duplicates
 from app.core.models import ScanResult
 
@@ -43,6 +44,8 @@ def _get_providers():
         providers.append(GooglePhotosProvider(session["gp_token"]))
     if session.get("ms_connected") and session.get("ms_token"):
         providers.append(OneDriveProvider(session["ms_token"]))
+    if session.get("amazon_connected") and session.get("amazon_token"):
+        providers.append(AmazonPhotosProvider(session["amazon_token"]))
     return providers
 
 
@@ -101,6 +104,7 @@ def index():
         google_connected=session.get("google_connected", False),
         gp_connected=session.get("gp_connected", False),
         ms_connected=session.get("ms_connected", False),
+        amazon_connected=session.get("amazon_connected", False),
     )
 
 
@@ -213,6 +217,7 @@ def folders():
         google_connected=session.get("google_connected", False),
         gp_connected=session.get("gp_connected", False),
         ms_connected=session.get("ms_connected", False),
+        amazon_connected=session.get("amazon_connected", False),
     )
 
 
@@ -411,6 +416,7 @@ def results():
         google_connected=session.get("google_connected", False),
         gp_connected=session.get("gp_connected", False),
         ms_connected=session.get("ms_connected", False),
+        amazon_connected=session.get("amazon_connected", False),
     )
 
 
@@ -479,6 +485,7 @@ def delete():
         google_connected=session.get("google_connected", False),
         gp_connected=session.get("gp_connected", False),
         ms_connected=session.get("ms_connected", False),
+        amazon_connected=session.get("amazon_connected", False),
     )
 
 

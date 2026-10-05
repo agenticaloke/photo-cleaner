@@ -77,6 +77,42 @@
     </article>
     {% endif %}
 
+    {% if amazon_connected is defined and amazon_connected and folder_tree.get('amazon_photos') is not none %}
+    <article>
+        <header>Amazon Photos</header>
+        <label>
+            <input type="checkbox" id="amazon-all" checked>
+            <strong>Scan all Amazon Photos</strong>
+        </label>
+        <div id="amazon-folders" style="display: none; margin-left: 1.5rem; margin-top: 0.5rem;">
+            <div id="amazon-tree">
+                {% for folder in folder_tree.get('amazon_photos', []) %}
+                <div class="folder-row" data-provider="amazon_photos" data-folder-id="{{ folder.id }}" data-depth="0">
+                    <div class="folder-label" style="display:flex;align-items:center;gap:0.4rem;">
+                        <span class="expand-btn {% if folder.has_children %}has-children{% endif %}"
+                              data-folder-id="{{ folder.id }}" data-provider="amazon_photos"
+                              title="Expand subfolders"
+                              style="cursor:pointer;user-select:none;font-size:0.85rem;min-width:1rem;">
+                            {% if folder.has_children %}▶{% endif %}
+                        </span>
+                        <label style="margin:0;">
+                            <input type="checkbox" name="folders" value="{{ folder.id }}"
+                                   class="folder-cb" data-provider="amazon_photos"
+                                   data-folder-id="{{ folder.id }}" data-depth="0">
+                            <strong>{{ folder.name }}</strong>
+                        </label>
+                    </div>
+                    <div class="children-container" id="children-amazon_photos-{{ folder.id }}" style="display:none;margin-left:1.5rem;"></div>
+                </div>
+                {% endfor %}
+                {% if not folder_tree.get('amazon_photos') %}
+                <small>No folders found — all photos will be scanned from the root.</small>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+    {% endif %}
+
     {% if ms_connected and folder_tree.get('onedrive') is not none %}
     <article>
         <header>OneDrive</header>
@@ -147,7 +183,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ── Per-provider subfolder cache ─────────────────────────────────────────
     // subfoldersCache[provider][folderId] = array of child folder objects
-    var subfoldersCache = { google_drive: {}, onedrive: {} };
+    var subfoldersCache = { google_drive: {}, onedrive: {}, amazon_photos: {} };
     var MAX_PREFETCH_DEPTH = 2;   // prefetch 2 levels deep automatically
 
     // Batch-fetch subfolders for an array of folder IDs, then recursively
@@ -205,13 +241,15 @@ document.addEventListener('DOMContentLoaded', function() {
             folderDiv.style.display = allCb.checked ? 'none' : 'block';
         });
     }
-    setupToggle('gdrive-all',    'gdrive-folders',    'google_drive', 'gdrive-tree');
-    setupToggle('gphotos-all',   'gphotos-folders',   'google_photos','gphotos-tree');
-    setupToggle('onedrive-all',  'onedrive-folders',  'onedrive',     'onedrive-tree');
+    setupToggle('gdrive-all',    'gdrive-folders',    'google_drive',  'gdrive-tree');
+    setupToggle('gphotos-all',   'gphotos-folders',   'google_photos', 'gphotos-tree');
+    setupToggle('onedrive-all',  'onedrive-folders',  'onedrive',      'onedrive-tree');
+    setupToggle('amazon-all',    'amazon-folders',    'amazon_photos', 'amazon-tree');
 
     // ── Prefetch starts immediately on page load (background) ────────────────
-    prefetchTree('google_drive', 'gdrive-tree');
-    prefetchTree('onedrive',     'onedrive-tree');
+    prefetchTree('google_drive',  'gdrive-tree');
+    prefetchTree('onedrive',      'onedrive-tree');
+    prefetchTree('amazon_photos', 'amazon-tree');
     // Google Photos albums have no subfolders — no prefetch needed
 
     // ── Build a folder row element dynamically ───────────────────────────────
@@ -425,6 +463,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (onedriveAll && !onedriveAll.checked) {
             document.querySelectorAll('#onedrive-tree .folder-cb:checked').forEach(function(cb) {
+                ids.push(cb.value);
+            });
+        }
+        var amazonAll = document.getElementById('amazon-all');
+        if (amazonAll && !amazonAll.checked) {
+            document.querySelectorAll('#amazon-tree .folder-cb:checked').forEach(function(cb) {
                 ids.push(cb.value);
             });
         }

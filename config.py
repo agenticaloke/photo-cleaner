@@ -21,6 +21,12 @@ class BaseConfig:
         "MICROSOFT_REDIRECT_URI", "http://localhost:5001/auth/microsoft/callback"
     )
 
+    AMAZON_CLIENT_ID = os.environ.get("AMAZON_CLIENT_ID", "")
+    AMAZON_CLIENT_SECRET = os.environ.get("AMAZON_CLIENT_SECRET", "")
+    AMAZON_REDIRECT_URI = os.environ.get(
+        "AMAZON_REDIRECT_URI", "http://localhost:5001/auth/amazon/callback"
+    )
+
     PHASH_THRESHOLD = int(os.environ.get("PHASH_THRESHOLD", "10"))
     DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() == "true"
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max form submission

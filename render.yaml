@@ -24,6 +24,12 @@ services:
         sync: false
       - key: MICROSOFT_REDIRECT_URI
         sync: false
+      - key: AMAZON_CLIENT_ID
+        sync: false
+      - key: AMAZON_CLIENT_SECRET
+        sync: false
+      - key: AMAZON_REDIRECT_URI
+        sync: false
       - key: PHASH_THRESHOLD
         value: "10"
       - key: DEBUG_MODE

@@ -24,6 +24,9 @@
                 {% if ms_connected %}
                 <li><small>OneDrive <span class="badge-connected">✓</span></small></li>
                 {% endif %}
+                {% if amazon_connected is defined and amazon_connected %}
+                <li><small>Amazon <span class="badge-connected">✓</span></small></li>
+                {% endif %}
             </ul>
         </nav>
     </header>

@@ -7,7 +7,7 @@ class CloudFile:
     """Represents a photo file from a cloud storage provider."""
     file_id: str
     name: str
-    provider: str  # "google_drive" or "onedrive"
+    provider: str  # "google_drive", "onedrive", "google_photos", "amazon_photos"
     size: int  # bytes
     sha256: Optional[str]  # From cloud API metadata (no download needed)
     mime_type: str

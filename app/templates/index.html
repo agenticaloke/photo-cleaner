@@ -24,6 +24,8 @@
     --gphotos-bg:rgba(232, 64, 64, 0.07);
     --onedrive:  #0078d4;
     --onedrive-bg:rgba(0, 120, 212, 0.07);
+    --amazon:    #ff9900;
+    --amazon-bg: rgba(255, 153, 0, 0.08);
     --radius:    14px;
     --radius-sm: 8px;
     font-family: 'Manrope', system-ui, sans-serif;
@@ -39,6 +41,7 @@
         --gdrive-bg: rgba(26, 115, 232, 0.12);
         --gphotos-bg:rgba(232, 64, 64, 0.12);
         --onedrive-bg:rgba(0, 120, 212, 0.12);
+        --amazon-bg: rgba(255, 153, 0, 0.12);
         color-scheme: dark;
     }
 }
@@ -52,6 +55,7 @@
     --gdrive-bg: rgba(26, 115, 232, 0.12);
     --gphotos-bg:rgba(232, 64, 64, 0.12);
     --onedrive-bg:rgba(0, 120, 212, 0.12);
+    --amazon-bg: rgba(255, 153, 0, 0.12);
     color-scheme: dark;
 }
 
@@ -183,6 +187,7 @@ a:hover { text-decoration: none; }
 .lp-provider-card.gdrive   { --provider-color: var(--gdrive);   }
 .lp-provider-card.gphotos  { --provider-color: var(--gphotos);  }
 .lp-provider-card.onedrive { --provider-color: var(--onedrive); }
+.lp-provider-card.amazon   { --provider-color: var(--amazon);   }
 
 .lp-provider-header {
     display: flex;
@@ -204,6 +209,7 @@ a:hover { text-decoration: none; }
 .lp-provider-card.gdrive   .lp-provider-icon { --provider-bg: var(--gdrive-bg);   }
 .lp-provider-card.gphotos  .lp-provider-icon { --provider-bg: var(--gphotos-bg);  }
 .lp-provider-card.onedrive .lp-provider-icon { --provider-bg: var(--onedrive-bg); }
+.lp-provider-card.amazon   .lp-provider-icon { --provider-bg: var(--amazon-bg);   }
 
 .lp-provider-name {
     font-weight: 700;
@@ -447,11 +453,34 @@ a:hover { text-decoration: none; }
             {% endif %}
         </div>
 
+        <!-- Amazon Photos -->
+        <div class="lp-provider-card amazon">
+            <div class="lp-provider-header">
+                <div class="lp-provider-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.958 10.09c0 1.232.029 2.256-.59 3.351-.502.891-1.301 1.438-2.186 1.438-1.214 0-1.922-.924-1.922-2.292 0-2.692 2.415-3.182 4.698-3.182v.685zm3.186 7.705a.659.659 0 0 1-.742.074c-1.044-.864-1.231-1.267-1.803-2.093-1.724 1.757-2.945 2.284-5.176 2.284-2.642 0-4.698-1.629-4.698-4.89 0-2.548 1.382-4.284 3.348-5.132 1.703-.749 4.085-.882 5.906-1.088v-.405c0-.745.057-1.629-.381-2.272-.381-.576-1.115-.815-1.762-.815-1.196 0-2.263.613-2.524 1.883-.054.282-.261.559-.543.572l-3.036-.328c-.255-.057-.539-.266-.466-.66C6.33 2.89 9.235 2 11.826 2c1.325 0 3.056.353 4.101 1.354C17.252 4.645 17.135 6.32 17.135 8.15v5.496c0 1.652.687 2.378 1.333 3.269.226.316.276.695-.014.93l-1.31 1.13v-.18z" fill="#ff9900"/>
+                        <path d="M20.556 18.648c-1.83 1.352-4.484 2.072-6.773 2.072-3.203 0-6.088-1.184-8.271-3.152-.171-.155-.018-.366.188-.246 2.356 1.371 5.267 2.195 8.278 2.195 2.03 0 4.262-.421 6.316-1.294.31-.131.569.204.262.425z" fill="#ff9900"/>
+                        <path d="M21.302 17.8c-.234-.3-1.549-.142-2.141-.071-.179.022-.207-.134-.045-.247 1.048-.737 2.768-.524 2.967-.277.2.248-.052 1.97-.034 2.658.013.501-.012.652-.239.504-.563-.375-1.574-1.152-2.508-.561z" fill="#ff9900"/>
+                    </svg>
+                </div>
+                <p class="lp-provider-name">Amazon Photos</p>
+                {% if amazon_connected %}<span class="lp-status-dot" title="Connected"></span>{% endif %}
+            </div>
+            <p class="lp-provider-desc">
+                Scan your Amazon Photos library for duplicates and free up Prime storage.
+            </p>
+            {% if amazon_connected %}
+                <a href="{{ url_for('amazon_auth.logout') }}" class="lp-btn lp-btn-disconnect">Disconnect</a>
+            {% else %}
+                <a href="{{ url_for('amazon_auth.login') }}" class="lp-btn lp-btn-connect">Connect Amazon Photos</a>
+            {% endif %}
+        </div>
+
     </div>
 </section>
 
 <!-- Scan CTA — shown only when connected -->
-{% if google_connected or gp_connected or ms_connected %}
+{% if google_connected or gp_connected or ms_connected or amazon_connected %}
 <div class="lp-cta">
     <div class="lp-cta-text">
         <h3>Ready to scan</h3>
