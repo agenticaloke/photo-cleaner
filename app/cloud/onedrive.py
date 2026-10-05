@@ -178,7 +178,7 @@ class OneDriveProvider(CloudProvider):
         """Download a medium-sized thumbnail. Returns local path or None."""
         try:
             if thumbnail_url:
-                resp = requests.get(thumbnail_url, timeout=5)
+                resp = requests.get(thumbnail_url, headers=self._headers, timeout=5)
             else:
                 url = f"{GRAPH_BASE}/me/drive/items/{file_id}/thumbnails/0/medium/content"
                 resp = requests.get(url, headers=self._headers, timeout=5)
