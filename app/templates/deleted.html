@@ -13,6 +13,11 @@
     {% if failed > 0 %}
     <p><strong>{{ failed }}</strong> files could not be deleted (check permissions)</p>
     {% endif %}
+    {% if gphoto_skipped > 0 %}
+    <p><strong>{{ gphoto_skipped }}</strong> Google Photos duplicate(s) identified —
+       <a href="https://photos.google.com" target="_blank" rel="noopener">open Google Photos</a>
+       to delete them manually (Google's API does not allow third-party apps to delete photos).</p>
+    {% endif %}
     <p>Space freed: <strong>{{ space_freed|filesize }}</strong></p>
     <p><small>Files are in your cloud provider's trash/recycle bin. You can restore them if needed.</small></p>
 </article>

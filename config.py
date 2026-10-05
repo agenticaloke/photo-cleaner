@@ -11,6 +11,10 @@ class BaseConfig:
         "GOOGLE_REDIRECT_URI", "http://localhost:5001/auth/google/callback"
     )
 
+    GOOGLE_PHOTOS_REDIRECT_URI = os.environ.get(
+        "GOOGLE_PHOTOS_REDIRECT_URI", "http://localhost:5001/auth/google-photos/callback"
+    )
+
     MICROSOFT_CLIENT_ID = os.environ.get("MICROSOFT_CLIENT_ID", "")
     MICROSOFT_CLIENT_SECRET = os.environ.get("MICROSOFT_CLIENT_SECRET", "")
     MICROSOFT_REDIRECT_URI = os.environ.get(

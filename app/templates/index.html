@@ -23,6 +23,19 @@
         </article>
 
         <article>
+            <header>Google Photos</header>
+            {% if gp_connected %}
+                <p><span class="badge-connected">Connected</span></p>
+                <p><small>Note: Google Photos API does not support deletion — duplicates can be identified but must be deleted manually in Google Photos.</small></p>
+                <a href="{{ url_for('google_photos_auth.logout') }}" role="button" class="outline secondary">Disconnect</a>
+            {% else %}
+                <p>Scan photos in your Google Photos library.</p>
+                <p><small>Note: Google Photos API does not support deletion — you can find duplicates but will need to delete them manually.</small></p>
+                <a href="{{ url_for('google_photos_auth.login') }}" role="button">Connect Google Photos</a>
+            {% endif %}
+        </article>
+
+        <article>
             <header>OneDrive</header>
             {% if ms_connected %}
                 <p><span class="badge-connected">Connected</span></p>
@@ -35,7 +48,7 @@
     </div>
 </section>
 
-{% if google_connected or ms_connected %}
+{% if google_connected or gp_connected or ms_connected %}
 <section>
     <h2>2. Select Folders &amp; Scan</h2>
     <p>Choose which folders to scan, or scan everything.</p>

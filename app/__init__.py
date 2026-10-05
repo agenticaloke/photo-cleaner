@@ -34,10 +34,12 @@ def create_app(config_name=None):
     csrf.init_app(app)
 
     from app.auth.google_auth import google_auth_bp
+    from app.auth.google_photos_auth import google_photos_auth_bp
     from app.auth.microsoft_auth import microsoft_auth_bp
     from app.web.routes import web_bp
 
     app.register_blueprint(google_auth_bp)
+    app.register_blueprint(google_photos_auth_bp)
     app.register_blueprint(microsoft_auth_bp)
     app.register_blueprint(web_bp)
 

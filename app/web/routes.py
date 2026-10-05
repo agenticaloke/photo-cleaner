@@ -14,6 +14,7 @@ from flask import (
 )
 
 from app.cloud.google_drive import GoogleDriveProvider
+from app.cloud.google_photos import GooglePhotosProvider
 from app.cloud.onedrive import OneDriveProvider
 from app.core.grouper import scan_for_duplicates
 from app.core.models import ScanResult
@@ -38,6 +39,8 @@ def _get_providers():
     providers = []
     if session.get("google_connected") and session.get("google_credentials"):
         providers.append(GoogleDriveProvider(session["google_credentials"]))
+    if session.get("gp_connected") and session.get("gp_token"):
+        providers.append(GooglePhotosProvider(session["gp_token"]))
     if session.get("ms_connected") and session.get("ms_token"):
         providers.append(OneDriveProvider(session["ms_token"]))
     return providers
@@ -96,6 +99,7 @@ def index():
     return render_template(
         "index.html",
         google_connected=session.get("google_connected", False),
+        gp_connected=session.get("gp_connected", False),
         ms_connected=session.get("ms_connected", False),
     )
 
@@ -207,6 +211,7 @@ def folders():
         "folders.html",
         folder_tree=folder_tree,
         google_connected=session.get("google_connected", False),
+        gp_connected=session.get("gp_connected", False),
         ms_connected=session.get("ms_connected", False),
     )
 
@@ -404,6 +409,7 @@ def results():
         result=result,
         scan_id=scan_id,
         google_connected=session.get("google_connected", False),
+        gp_connected=session.get("gp_connected", False),
         ms_connected=session.get("ms_connected", False),
     )
 
@@ -440,11 +446,16 @@ def delete():
 
     deleted = 0
     failed = 0
+    gphoto_skipped = 0
     space_freed = 0
 
     for file_id in file_ids:
         cf = all_files.get(file_id)
         if not cf:
+            continue
+        # Google Photos API does not support deletion
+        if cf.provider == "google_photos":
+            gphoto_skipped += 1
             continue
         provider = provider_map.get(cf.provider)
         if provider and provider.delete_file(file_id):
@@ -463,8 +474,10 @@ def delete():
         "deleted.html",
         deleted=deleted,
         failed=failed,
+        gphoto_skipped=gphoto_skipped,
         space_freed=space_freed,
         google_connected=session.get("google_connected", False),
+        gp_connected=session.get("gp_connected", False),
         ms_connected=session.get("ms_connected", False),
     )
 

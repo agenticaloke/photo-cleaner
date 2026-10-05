@@ -45,6 +45,38 @@
     </article>
     {% endif %}
 
+    {% if gp_connected and folder_tree.get('google_photos') is not none %}
+    <article>
+        <header>Google Photos</header>
+        <label>
+            <input type="checkbox" id="gphotos-all" checked>
+            <strong>Scan all Google Photos</strong>
+        </label>
+        <div id="gphotos-folders" style="display: none; margin-left: 1.5rem; margin-top: 0.5rem;">
+            <div id="gphotos-tree">
+                {% if folder_tree.get('google_photos') %}
+                    {% for album in folder_tree.get('google_photos', []) %}
+                    <div class="folder-row" data-provider="google_photos" data-folder-id="{{ album.id }}" data-depth="0">
+                        <div class="folder-label" style="display:flex;align-items:center;gap:0.4rem;">
+                            <span style="min-width:1rem;"></span>
+                            <label style="margin:0;">
+                                <input type="checkbox" name="folders" value="{{ album.id }}"
+                                       class="folder-cb" data-provider="google_photos"
+                                       data-folder-id="{{ album.id }}" data-depth="0">
+                                {{ album.name }}
+                            </label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <small>No albums found — all photos will be scanned.</small>
+                {% endif %}
+            </div>
+        </div>
+        <small style="color:var(--muted-color);">Note: Google Photos duplicates can be identified but must be deleted manually in Google Photos.</small>
+    </article>
+    {% endif %}
+
     {% if ms_connected and folder_tree.get('onedrive') is not none %}
     <article>
         <header>OneDrive</header>
@@ -174,12 +206,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     setupToggle('gdrive-all',    'gdrive-folders',    'google_drive', 'gdrive-tree');
+    setupToggle('gphotos-all',   'gphotos-folders',   'google_photos','gphotos-tree');
     setupToggle('onedrive-all',  'onedrive-folders',  'onedrive',     'onedrive-tree');
 
     // ── Prefetch starts immediately on page load (background) ────────────────
-    // Data arrives before the user even unchecks "Scan all", so expand is instant.
     prefetchTree('google_drive', 'gdrive-tree');
     prefetchTree('onedrive',     'onedrive-tree');
+    // Google Photos albums have no subfolders — no prefetch needed
 
     // ── Build a folder row element dynamically ───────────────────────────────
     function buildFolderRow(folder, provider, depth, parentFolderId) {
@@ -377,10 +410,16 @@ document.addEventListener('DOMContentLoaded', function() {
     function getSelectedFolders() {
         var ids = [];
         var gdriveAll   = document.getElementById('gdrive-all');
+        var gphotosAll  = document.getElementById('gphotos-all');
         var onedriveAll = document.getElementById('onedrive-all');
 
         if (gdriveAll && !gdriveAll.checked) {
             document.querySelectorAll('#gdrive-tree .folder-cb:checked').forEach(function(cb) {
+                ids.push(cb.value);
+            });
+        }
+        if (gphotosAll && !gphotosAll.checked) {
+            document.querySelectorAll('#gphotos-tree .folder-cb:checked').forEach(function(cb) {
                 ids.push(cb.value);
             });
         }
