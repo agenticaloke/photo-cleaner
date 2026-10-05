@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Photo Cleaner{% endblock %}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block styles %}{% endblock %}
 </head>
 <body>
     <header class="container">
@@ -15,10 +16,13 @@
             </ul>
             <ul>
                 {% if google_connected %}
-                <li><small>Google Drive <span class="badge-connected">Connected</span></small></li>
+                <li><small>Drive <span class="badge-connected">✓</span></small></li>
+                {% endif %}
+                {% if gp_connected is defined and gp_connected %}
+                <li><small>Photos <span class="badge-connected">✓</span></small></li>
                 {% endif %}
                 {% if ms_connected %}
-                <li><small>OneDrive <span class="badge-connected">Connected</span></small></li>
+                <li><small>OneDrive <span class="badge-connected">✓</span></small></li>
                 {% endif %}
             </ul>
         </nav>

@@ -1,78 +1,495 @@
 {% extends "base.html" %}
 
-{% block title %}Photo Cleaner — Find & Remove Duplicate Photos{% endblock %}
+{% block title %}Photo Cleaner — Remove Duplicate Photos{% endblock %}
+
+{% block styles %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,300;1,9..144,600&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ─── Design tokens ─────────────────────────────────────── */
+:root {
+    --hero-bg:   #0e1523;
+    --surface:   #f7f9fb;
+    --card:      #ffffff;
+    --border:    #dde3ea;
+    --fg:        #1a2535;
+    --fg-muted:  #5a6d80;
+    --accent:    #0e9f84;
+    --accent-bg: rgba(14, 159, 132, 0.09);
+    --gdrive:    #1a73e8;
+    --gdrive-bg: rgba(26, 115, 232, 0.07);
+    --gphotos:   #e84040;
+    --gphotos-bg:rgba(232, 64, 64, 0.07);
+    --onedrive:  #0078d4;
+    --onedrive-bg:rgba(0, 120, 212, 0.07);
+    --radius:    14px;
+    --radius-sm: 8px;
+    font-family: 'Manrope', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --surface:   #0a0f18;
+        --card:      #111827;
+        --border:    #1f2d40;
+        --fg:        #c8d8e8;
+        --fg-muted:  #6b8099;
+        --accent-bg: rgba(14, 159, 132, 0.13);
+        --gdrive-bg: rgba(26, 115, 232, 0.12);
+        --gphotos-bg:rgba(232, 64, 64, 0.12);
+        --onedrive-bg:rgba(0, 120, 212, 0.12);
+        color-scheme: dark;
+    }
+}
+:root[data-theme="dark"] {
+    --surface:   #0a0f18;
+    --card:      #111827;
+    --border:    #1f2d40;
+    --fg:        #c8d8e8;
+    --fg-muted:  #6b8099;
+    --accent-bg: rgba(14, 159, 132, 0.13);
+    --gdrive-bg: rgba(26, 115, 232, 0.12);
+    --gphotos-bg:rgba(232, 64, 64, 0.12);
+    --onedrive-bg:rgba(0, 120, 212, 0.12);
+    color-scheme: dark;
+}
+
+/* ─── Reset overrides ───────────────────────────────────── */
+body { background: var(--surface); color: var(--fg); }
+a { color: inherit; }
+a:hover { text-decoration: none; }
+
+/* ─── Hero ──────────────────────────────────────────────── */
+.lp-hero {
+    background: var(--hero-bg);
+    color: #e8f0f8;
+    padding: 5rem 1.5rem 4.5rem;
+    margin-bottom: 3rem;
+    border-radius: 16px;
+}
+.lp-hero-inner {
+    max-width: 680px;
+}
+.lp-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 1.25rem;
+}
+.lp-eyebrow::before {
+    content: '';
+    display: block;
+    width: 20px;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 2px;
+}
+.lp-hero h1 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: clamp(2.1rem, 5.5vw, 3.4rem);
+    font-weight: 300;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    color: #f0f6ff;
+    margin: 0 0 1.2rem;
+}
+.lp-hero h1 em {
+    font-style: italic;
+    color: var(--accent);
+}
+.lp-hero-sub {
+    font-size: 1.05rem;
+    line-height: 1.65;
+    color: #8faabb;
+    margin: 0 0 2rem;
+    max-width: 540px;
+}
+.lp-trust {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.lp-trust li {
+    font-size: 0.82rem;
+    color: #6a8a9e;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.lp-trust li::before {
+    content: '✓';
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 0.85em;
+}
+
+/* ─── Section labels ────────────────────────────────────── */
+.lp-section-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fg-muted);
+    margin-bottom: 0.35rem;
+}
+.lp-section-title {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--fg);
+    margin: 0 0 1.75rem;
+    line-height: 1.2;
+}
+
+/* ─── Provider cards ────────────────────────────────────── */
+.lp-providers {
+    margin-bottom: 3.5rem;
+}
+.lp-provider-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+}
+.lp-provider-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.4rem 1.5rem;
+    position: relative;
+    overflow: hidden;
+    transition: box-shadow 0.18s ease;
+}
+.lp-provider-card:hover {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+}
+.lp-provider-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--provider-color);
+    border-radius: var(--radius) var(--radius) 0 0;
+}
+.lp-provider-card.gdrive   { --provider-color: var(--gdrive);   }
+.lp-provider-card.gphotos  { --provider-color: var(--gphotos);  }
+.lp-provider-card.onedrive { --provider-color: var(--onedrive); }
+
+.lp-provider-header {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+.lp-provider-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    background: var(--provider-bg);
+    flex-shrink: 0;
+}
+.lp-provider-card.gdrive   .lp-provider-icon { --provider-bg: var(--gdrive-bg);   }
+.lp-provider-card.gphotos  .lp-provider-icon { --provider-bg: var(--gphotos-bg);  }
+.lp-provider-card.onedrive .lp-provider-icon { --provider-bg: var(--onedrive-bg); }
+
+.lp-provider-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--fg);
+    margin: 0;
+}
+.lp-status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #2ecc71;
+    flex-shrink: 0;
+    margin-left: auto;
+    box-shadow: 0 0 0 3px rgba(46, 204, 113, 0.2);
+}
+.lp-provider-desc {
+    font-size: 0.84rem;
+    color: var(--fg-muted);
+    line-height: 1.5;
+    margin: 0 0 1rem;
+    min-height: 2.5rem;
+}
+.lp-provider-note {
+    font-size: 0.76rem;
+    color: var(--fg-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.7rem;
+    margin-bottom: 0.9rem;
+    line-height: 1.45;
+}
+.lp-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0.55rem 1.1rem;
+    border-radius: 9px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.12s;
+    border: none;
+    width: 100%;
+}
+.lp-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+.lp-btn:active { transform: translateY(0); }
+.lp-btn-connect {
+    color: #fff;
+    background: var(--provider-color);
+}
+.lp-btn-disconnect {
+    color: var(--fg-muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+}
+
+/* ─── CTA band ──────────────────────────────────────────── */
+.lp-cta {
+    background: var(--accent-bg);
+    border: 1px solid rgba(14, 159, 132, 0.22);
+    border-radius: var(--radius);
+    padding: 1.75rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 3.5rem;
+}
+.lp-cta-text h3 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 600;
+    font-size: 1.2rem;
+    color: var(--fg);
+    margin: 0 0 0.2rem;
+}
+.lp-cta-text p {
+    font-size: 0.87rem;
+    color: var(--fg-muted);
+    margin: 0;
+}
+.lp-btn-cta {
+    background: var(--accent);
+    color: #fff;
+    padding: 0.7rem 1.6rem;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    transition: opacity 0.15s, transform 0.12s;
+}
+.lp-btn-cta:hover { opacity: 0.9; transform: translateY(-1px); color: #fff; }
+
+/* ─── Features ──────────────────────────────────────────── */
+.lp-features {
+    margin-bottom: 3.5rem;
+}
+.lp-feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+}
+.lp-feature-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.4rem 1.5rem;
+}
+.lp-feature-icon {
+    font-size: 1.6rem;
+    margin-bottom: 0.8rem;
+    display: block;
+    line-height: 1;
+}
+.lp-feature-card h4 {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--fg);
+    margin: 0 0 0.4rem;
+}
+.lp-feature-card p {
+    font-size: 0.84rem;
+    color: var(--fg-muted);
+    line-height: 1.55;
+    margin: 0;
+}
+
+/* ─── Responsive ────────────────────────────────────────── */
+@media (max-width: 600px) {
+    .lp-hero { padding: 3.5rem 0 3rem; border-radius: 0 0 20px 20px; }
+    .lp-cta { flex-direction: column; align-items: flex-start; }
+    .lp-btn-cta { width: 100%; justify-content: center; }
+}
+</style>
+{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>Duplicate Photo Cleaner</h1>
-    <p>Connect your cloud storage, find duplicates, and free up space.</p>
-</hgroup>
 
-<section>
-    <h2>1. Connect Your Accounts</h2>
-    <div class="grid">
-        <article>
-            <header>Google Drive</header>
-            {% if google_connected %}
-                <p><span class="badge-connected">Connected</span></p>
-                <a href="{{ url_for('google_auth.logout') }}" role="button" class="outline secondary">Disconnect</a>
-            {% else %}
-                <p>Scan photos stored in your Google Drive.</p>
-                <a href="{{ url_for('google_auth.login') }}" role="button">Connect Google Drive</a>
-            {% endif %}
-        </article>
-
-        <article>
-            <header>Google Photos</header>
-            {% if gp_connected %}
-                <p><span class="badge-connected">Connected</span></p>
-                <p><small>Note: Google Photos API does not support deletion — duplicates can be identified but must be deleted manually in Google Photos.</small></p>
-                <a href="{{ url_for('google_photos_auth.logout') }}" role="button" class="outline secondary">Disconnect</a>
-            {% else %}
-                <p>Scan photos in your Google Photos library.</p>
-                <p><small>Note: Google Photos API does not support deletion — you can find duplicates but will need to delete them manually.</small></p>
-                <a href="{{ url_for('google_photos_auth.login') }}" role="button">Connect Google Photos</a>
-            {% endif %}
-        </article>
-
-        <article>
-            <header>OneDrive</header>
-            {% if ms_connected %}
-                <p><span class="badge-connected">Connected</span></p>
-                <a href="{{ url_for('microsoft_auth.logout') }}" role="button" class="outline secondary">Disconnect</a>
-            {% else %}
-                <p>Scan photos stored in your OneDrive.</p>
-                <a href="{{ url_for('microsoft_auth.login') }}" role="button">Connect OneDrive</a>
-            {% endif %}
-        </article>
+<!-- Hero -->
+<section class="lp-hero">
+    <div class="lp-hero-inner">
+        <p class="lp-eyebrow">Photo Cleaner</p>
+        <h1>Stop keeping <em>12 copies</em> of the same photo.</h1>
+        <p class="lp-hero-sub">
+            Connect your cloud storage, scan for exact and near-duplicate photos across
+            Google Drive, Google Photos, and OneDrive — then clear them out in one go.
+        </p>
+        <ul class="lp-trust">
+            <li>Files moved to trash, never permanently deleted</li>
+            <li>No photos stored on our servers</li>
+            <li>Works across multiple cloud services at once</li>
+        </ul>
     </div>
 </section>
 
+<!-- Provider cards -->
+<section class="lp-providers">
+    <p class="lp-section-label">Step 1</p>
+    <h2 class="lp-section-title">Connect your accounts</h2>
+
+    <div class="lp-provider-grid">
+
+        <!-- Google Drive -->
+        <div class="lp-provider-card gdrive">
+            <div class="lp-provider-header">
+                <div class="lp-provider-icon">
+                    <svg width="18" height="16" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                        <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                        <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+                        <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                        <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                        <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                        <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                    </svg>
+                </div>
+                <p class="lp-provider-name">Google Drive</p>
+                {% if google_connected %}<span class="lp-status-dot" title="Connected"></span>{% endif %}
+            </div>
+            <p class="lp-provider-desc">
+                Scan photos and images stored anywhere in your Google Drive folders.
+            </p>
+            {% if google_connected %}
+                <a href="{{ url_for('google_auth.logout') }}" class="lp-btn lp-btn-disconnect">Disconnect</a>
+            {% else %}
+                <a href="{{ url_for('google_auth.login') }}" class="lp-btn lp-btn-connect">Connect Google Drive</a>
+            {% endif %}
+        </div>
+
+        <!-- Google Photos -->
+        <div class="lp-provider-card gphotos">
+            <div class="lp-provider-header">
+                <div class="lp-provider-icon">
+                    <svg width="18" height="18" viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M96 16c0-8.84 7.16-16 16-16h64c8.84 0 16 7.16 16 16v64c0 8.84-7.16 16-16 16H96V16z" fill="#f9ab00"/>
+                        <path d="M96 16v80H16C7.16 96 0 88.84 0 80V16C0 7.16 7.16 0 16 0h64c8.84 0 16 7.16 16 16z" fill="#4285f4"/>
+                        <path d="M96 96h80c8.84 0 16 7.16 16 16v64c0 8.84-7.16 16-16 16H112c-8.84 0-16-7.16-16-16V96z" fill="#34a853"/>
+                        <path d="M96 96v80c0 8.84-7.16 16-16 16H16c-8.84 0-16-7.16-16-16v-64c0-8.84 7.16-16 16-16h80z" fill="#ea4335"/>
+                    </svg>
+                </div>
+                <p class="lp-provider-name">Google Photos</p>
+                {% if gp_connected %}<span class="lp-status-dot" title="Connected"></span>{% endif %}
+            </div>
+            <p class="lp-provider-desc">
+                Find duplicates in your Google Photos library and albums.
+            </p>
+            <div class="lp-provider-note">
+                Google's API doesn't allow third-party apps to delete photos — you can identify duplicates here, then remove them in Google Photos.
+            </div>
+            {% if gp_connected %}
+                <a href="{{ url_for('google_photos_auth.logout') }}" class="lp-btn lp-btn-disconnect">Disconnect</a>
+            {% else %}
+                <a href="{{ url_for('google_photos_auth.login') }}" class="lp-btn lp-btn-connect">Connect Google Photos</a>
+            {% endif %}
+        </div>
+
+        <!-- OneDrive -->
+        <div class="lp-provider-card onedrive">
+            <div class="lp-provider-header">
+                <div class="lp-provider-icon">
+                    <svg width="22" height="14" viewBox="0 0 22 14" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.5 5.2a6.5 6.5 0 0 0-11.3 3.3A4.5 4.5 0 0 0 4.5 17H18a4 4 0 0 0 .9-7.9A6.5 6.5 0 0 0 13.5 5.2z" fill="#0078d4"/>
+                    </svg>
+                </div>
+                <p class="lp-provider-name">OneDrive</p>
+                {% if ms_connected %}<span class="lp-status-dot" title="Connected"></span>{% endif %}
+            </div>
+            <p class="lp-provider-desc">
+                Scan your Microsoft OneDrive for duplicate photos and free up storage.
+            </p>
+            {% if ms_connected %}
+                <a href="{{ url_for('microsoft_auth.logout') }}" class="lp-btn lp-btn-disconnect">Disconnect</a>
+            {% else %}
+                <a href="{{ url_for('microsoft_auth.login') }}" class="lp-btn lp-btn-connect">Connect OneDrive</a>
+            {% endif %}
+        </div>
+
+    </div>
+</section>
+
+<!-- Scan CTA — shown only when connected -->
 {% if google_connected or gp_connected or ms_connected %}
-<section>
-    <h2>2. Select Folders &amp; Scan</h2>
-    <p>Choose which folders to scan, or scan everything.</p>
-    <a href="{{ url_for('web.folders') }}" role="button" class="contrast">
+<div class="lp-cta">
+    <div class="lp-cta-text">
+        <h3>Ready to scan</h3>
+        <p>Choose which folders to include, or scan everything at once.</p>
+    </div>
+    <a href="{{ url_for('web.folders') }}" class="lp-btn-cta">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         Choose Folders &amp; Scan
     </a>
-</section>
+</div>
 {% endif %}
 
-<section>
-    <h2>How It Works</h2>
-    <div class="grid">
-        <div>
-            <h3>Safe</h3>
-            <p>Deleted photos go to your cloud trash — you can always restore them.</p>
+<!-- Features -->
+<section class="lp-features">
+    <p class="lp-section-label">How it works</p>
+    <h2 class="lp-section-title">Clean, safe, and thorough</h2>
+    <div class="lp-feature-grid">
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon">🗑️</span>
+            <h4>Trash, not gone</h4>
+            <p>Duplicates are moved to your cloud trash bin — restore them any time if you change your mind.</p>
         </div>
-        <div>
-            <h3>Smart</h3>
-            <p>Finds both exact copies and visually similar photos (resized, recompressed).</p>
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon">🔍</span>
+            <h4>Exact &amp; near-duplicates</h4>
+            <p>Finds pixel-identical copies and visually similar versions — recompressed, resized, or re-uploaded.</p>
         </div>
-        <div>
-            <h3>Fast</h3>
-            <p>Uses cloud metadata for matching — no need to download all your photos.</p>
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon">⚡</span>
+            <h4>Metadata-first</h4>
+            <p>Compares file hashes and perceptual fingerprints without downloading your entire photo library.</p>
+        </div>
+        <div class="lp-feature-card">
+            <span class="lp-feature-icon">☁️</span>
+            <h4>Multi-cloud</h4>
+            <p>Scan Google Drive, Google Photos, and OneDrive in a single pass to catch cross-service duplicates.</p>
         </div>
     </div>
 </section>
+
 {% endblock %}
