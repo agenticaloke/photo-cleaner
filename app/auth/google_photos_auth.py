@@ -49,7 +49,6 @@ def login():
     flow = _build_flow()
     auth_url, _ = flow.authorization_url(
         access_type="offline",
-        include_granted_scopes="true",
         state=state,
         prompt="consent",
         code_challenge=code_challenge,
