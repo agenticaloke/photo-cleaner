@@ -80,7 +80,8 @@ def callback():
         return "Invalid state parameter", 403
 
     flow = _build_flow()
-    flow.fetch_token(authorization_response=request.url)
+    authorization_response = request.url.replace("http://", "https://", 1)
+    flow.fetch_token(authorization_response=authorization_response)
     credentials = flow.credentials
 
     # Store credentials in server-side session
