@@ -217,7 +217,9 @@ class GoogleDriveProvider(CloudProvider):
             if not thumb_url:
                 return None
 
-            resp = http_requests.get(thumb_url, timeout=5)
+            # thumbnailLink requires the OAuth token when fetched server-side
+            headers = {"Authorization": f"Bearer {self._token}"}
+            resp = http_requests.get(thumb_url, headers=headers, timeout=5)
             if resp.status_code == 200:
                 path = os.path.join(temp_dir, f"gdrive_{file_id}.jpg")
                 with open(path, "wb") as f:
