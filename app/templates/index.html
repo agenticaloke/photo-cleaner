@@ -188,6 +188,32 @@ a:hover { text-decoration: none; }
 .lp-provider-card.gphotos  { --provider-color: var(--gphotos);  }
 .lp-provider-card.onedrive { --provider-color: var(--onedrive); }
 .lp-provider-card.amazon   { --provider-color: var(--amazon);   }
+.lp-provider-card.coming-soon { opacity: 0.7; }
+.lp-coming-soon-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    background: var(--amazon-bg);
+    color: var(--amazon);
+    border: 1px solid rgba(255,153,0,0.3);
+    border-radius: 20px;
+    padding: 2px 9px;
+    margin-left: auto;
+}
+.lp-btn-coming-soon {
+    width: 100%;
+    padding: 0.55rem 1.1rem;
+    border-radius: 9px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    color: var(--fg-muted);
+    cursor: default;
+}
 
 .lp-provider-header {
     display: flex;
@@ -453,8 +479,8 @@ a:hover { text-decoration: none; }
             {% endif %}
         </div>
 
-        <!-- Amazon Photos -->
-        <div class="lp-provider-card amazon">
+        <!-- Amazon Photos — coming soon -->
+        <div class="lp-provider-card amazon coming-soon">
             <div class="lp-provider-header">
                 <div class="lp-provider-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -464,16 +490,12 @@ a:hover { text-decoration: none; }
                     </svg>
                 </div>
                 <p class="lp-provider-name">Amazon Photos</p>
-                {% if amazon_connected %}<span class="lp-status-dot" title="Connected"></span>{% endif %}
+                <span class="lp-coming-soon-badge">Coming soon</span>
             </div>
             <p class="lp-provider-desc">
                 Scan your Amazon Photos library for duplicates and free up Prime storage.
             </p>
-            {% if amazon_connected %}
-                <a href="{{ url_for('amazon_auth.logout') }}" class="lp-btn lp-btn-disconnect">Disconnect</a>
-            {% else %}
-                <a href="{{ url_for('amazon_auth.login') }}" class="lp-btn lp-btn-connect">Connect Amazon Photos</a>
-            {% endif %}
+            <div class="lp-btn-coming-soon">Coming soon</div>
         </div>
 
     </div>
