@@ -15,13 +15,13 @@
                 <li><strong><a href="{{ url_for('web.index') }}">Photo Cleaner</a></strong></li>
             </ul>
             <ul>
-                {% if google_connected %}
+                {% if google_connected is defined and google_connected %}
                 <li><small>Drive <span class="badge-connected">✓</span></small></li>
                 {% endif %}
                 {% if gp_connected is defined and gp_connected %}
                 <li><small>Photos <span class="badge-connected">✓</span></small></li>
                 {% endif %}
-                {% if ms_connected %}
+                {% if ms_connected is defined and ms_connected %}
                 <li><small>OneDrive <span class="badge-connected">✓</span></small></li>
                 {% endif %}
                 {% if amazon_connected is defined and amazon_connected %}

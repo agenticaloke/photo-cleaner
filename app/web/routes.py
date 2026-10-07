@@ -98,7 +98,13 @@ def filesize_filter(value):
 
 @web_bp.route("/privacy")
 def privacy():
-    return render_template("privacy.html")
+    return render_template(
+        "privacy.html",
+        google_connected=session.get("google_connected", False),
+        gp_connected=session.get("gp_connected", False),
+        ms_connected=session.get("ms_connected", False),
+        amazon_connected=session.get("amazon_connected", False),
+    )
 
 
 @web_bp.route("/")
