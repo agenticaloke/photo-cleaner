@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Privacy Policy — Photo Cleaner{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Privacy Policy</h1>
+    <p>Last updated: October 2026</p>
+</hgroup>
+
+<article>
+    <h2>What this app does</h2>
+    <p>Photo Cleaner connects to your cloud storage accounts (Google Drive, Google Photos, OneDrive, and Amazon Photos) to scan for duplicate photos and help you remove them.</p>
+</article>
+
+<article>
+    <h2>What data we access</h2>
+    <ul>
+        <li>File names, sizes, and metadata needed to identify duplicates</li>
+        <li>Small thumbnail images displayed in the results</li>
+        <li>Folder and album names to show file locations</li>
+    </ul>
+    <p>We request only the minimum permissions needed to list, preview, and delete files.</p>
+</article>
+
+<article>
+    <h2>What we do NOT do</h2>
+    <ul>
+        <li>We do not store your photos or files on our servers</li>
+        <li>We do not share your data with third parties</li>
+        <li>We do not permanently delete files — duplicates are moved to your cloud provider's trash, where you can restore them</li>
+        <li>We do not retain your OAuth tokens beyond your browser session</li>
+    </ul>
+</article>
+
+<article>
+    <h2>Data storage</h2>
+    <p>Your OAuth access tokens are stored only in your browser session and are discarded when you disconnect an account or close the session. No photo data, file contents, or personal information is written to permanent storage.</p>
+</article>
+
+<article>
+    <h2>Third-party services</h2>
+    <p>This app connects to the following services on your behalf, subject to their own privacy policies:</p>
+    <ul>
+        <li>Google Drive &amp; Google Photos — <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy Policy</a></li>
+        <li>Microsoft OneDrive — <a href="https://privacy.microsoft.com" target="_blank" rel="noopener">Microsoft Privacy Statement</a></li>
+        <li>Amazon Photos — <a href="https://www.amazon.com/gp/help/customer/display.html?nodeId=468496" target="_blank" rel="noopener">Amazon Privacy Notice</a></li>
+    </ul>
+</article>
+
+<article>
+    <h2>Contact</h2>
+    <p>Questions about this policy? Contact us at <a href="mailto:agenticaloke@gmail.com">agenticaloke@gmail.com</a></p>
+</article>
+{% endblock %}

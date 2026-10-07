@@ -96,6 +96,11 @@ def filesize_filter(value):
     return _format_size(value)
 
 
+@web_bp.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
 @web_bp.route("/")
 def index():
     """Home page — shows connection status and scan button."""
