@@ -6,6 +6,10 @@ import base64
 from flask import Blueprint, redirect, request, session, url_for, current_app
 from google_auth_oauthlib.flow import Flow
 
+# Allow Google to return a broader scope than requested (e.g. when the user
+# has previously granted photoslibrary.readonly via the Photos flow).
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
 google_auth_bp = Blueprint("google_auth", __name__, url_prefix="/auth/google")
 
 SCOPES_READONLY = [
