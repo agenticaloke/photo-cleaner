@@ -25,7 +25,7 @@ class GoogleDriveProvider(CloudProvider):
             client_id=credentials_dict.get("client_id"),
             client_secret=credentials_dict.get("client_secret"),
         )
-        self.service = build("drive", "v3", credentials=creds)
+        self.service = build("drive", "v3", credentials=creds, cache_discovery=False)
         self._token = credentials_dict["token"]
 
     @property

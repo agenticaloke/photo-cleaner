@@ -39,13 +39,27 @@ def _get_providers():
     """Build list of active cloud providers from session credentials."""
     providers = []
     if session.get("google_connected") and session.get("google_credentials"):
-        providers.append(GoogleDriveProvider(session["google_credentials"]))
+        try:
+            providers.append(GoogleDriveProvider(session["google_credentials"]))
+        except Exception as e:
+            logger.error(f"Failed to init GoogleDriveProvider: {e}", exc_info=True)
+            session.pop("google_connected", None)
+            session.pop("google_credentials", None)
     if session.get("gp_connected") and session.get("gp_token"):
-        providers.append(GooglePhotosProvider(session["gp_token"]))
+        try:
+            providers.append(GooglePhotosProvider(session["gp_token"]))
+        except Exception as e:
+            logger.error(f"Failed to init GooglePhotosProvider: {e}", exc_info=True)
     if session.get("ms_connected") and session.get("ms_token"):
-        providers.append(OneDriveProvider(session["ms_token"]))
+        try:
+            providers.append(OneDriveProvider(session["ms_token"]))
+        except Exception as e:
+            logger.error(f"Failed to init OneDriveProvider: {e}", exc_info=True)
     if session.get("amazon_connected") and session.get("amazon_token"):
-        providers.append(AmazonPhotosProvider(session["amazon_token"]))
+        try:
+            providers.append(AmazonPhotosProvider(session["amazon_token"]))
+        except Exception as e:
+            logger.error(f"Failed to init AmazonPhotosProvider: {e}", exc_info=True)
     return providers
 
 
