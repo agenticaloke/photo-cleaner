@@ -70,6 +70,22 @@ class GoogleDriveProvider(CloudProvider):
         folders.sort(key=lambda f: f["name"].lower())
         return folders
 
+    def _resolve_parent_names(self, parent_ids):
+        """Return {folder_id: folder_name} for a set of Drive IDs (cached)."""
+        result = {}
+        for fid in parent_ids:
+            if fid == "root":
+                result[fid] = ""
+                continue
+            try:
+                meta = self.service.files().get(
+                    fileId=fid, fields="name"
+                ).execute()
+                result[fid] = meta.get("name", "")
+            except Exception:
+                result[fid] = ""
+        return result
+
     def list_photos(self, folder_ids=None, progress_callback=None):
         """List image files in Google Drive.
 
@@ -102,6 +118,7 @@ class GoogleDriveProvider(CloudProvider):
             ).execute()
 
             for item in response.get("files", []):
+                parents = item.get("parents", [])
                 cf = CloudFile(
                     file_id=item["id"],
                     name=item.get("name", ""),
@@ -112,6 +129,7 @@ class GoogleDriveProvider(CloudProvider):
                     created_time=item.get("createdTime", ""),
                     modified_time=item.get("modifiedTime", ""),
                     thumbnail_url=item.get("thumbnailLink"),
+                    folder_path=parents[0] if parents else "",  # resolved below
                 )
                 all_files.append(cf)
 
@@ -122,14 +140,25 @@ class GoogleDriveProvider(CloudProvider):
             if not page_token:
                 break
 
+        # Resolve parent IDs → folder names in one pass
+        parent_ids = {f.folder_path for f in all_files if f.folder_path}
+        name_map = self._resolve_parent_names(parent_ids)
+        for cf in all_files:
+            cf.folder_path = name_map.get(cf.folder_path, "")
+
         return all_files
 
     def _list_photos_in_folders(self, folder_ids, progress_callback=None):
         """List image files only in the specified folders and their subfolders."""
         all_files = []
 
-        # Collect all folder IDs including subfolders
+        # Pre-resolve selected folder IDs → names for path display
+        folder_name_map = self._resolve_parent_names(set(folder_ids))
+
+        # Collect all folder IDs including subfolders; track each folder's parent
         all_folder_ids = set()
+        # Map: folder_id → display path (from the selected root downward)
+        folder_paths = {fid: folder_name_map.get(fid, fid) for fid in folder_ids}
         folders_to_scan = list(folder_ids)
 
         while folders_to_scan:
@@ -137,8 +166,9 @@ class GoogleDriveProvider(CloudProvider):
             if fid in all_folder_ids:
                 continue
             all_folder_ids.add(fid)
+            parent_path = folder_paths.get(fid, "")
 
-            # Find subfolders
+            # Find subfolders and inherit path
             query = (
                 f"'{fid}' in parents and "
                 "mimeType='application/vnd.google-apps.folder' and trashed=false"
@@ -147,12 +177,17 @@ class GoogleDriveProvider(CloudProvider):
             while True:
                 resp = self.service.files().list(
                     q=query,
-                    fields="nextPageToken, files(id)",
+                    fields="nextPageToken, files(id, name)",
                     pageSize=1000,
                     pageToken=page_token,
                 ).execute()
                 for item in resp.get("files", []):
-                    folders_to_scan.append(item["id"])
+                    child_id = item["id"]
+                    child_name = item.get("name", "")
+                    folder_paths[child_id] = (
+                        f"{parent_path}/{child_name}" if parent_path else child_name
+                    )
+                    folders_to_scan.append(child_id)
                 page_token = resp.get("nextPageToken")
                 if not page_token:
                     break
@@ -192,6 +227,7 @@ class GoogleDriveProvider(CloudProvider):
                         created_time=item.get("createdTime", ""),
                         modified_time=item.get("modifiedTime", ""),
                         thumbnail_url=item.get("thumbnailLink"),
+                        folder_path=folder_paths.get(fid, ""),
                     )
                     all_files.append(cf)
 

@@ -103,11 +103,27 @@ class AmazonPhotosProvider(CloudProvider):
         all_files = []
         if folder_ids:
             seen = set()
+            # Resolve top-level selected folder names for path display
+            folder_names = self._resolve_folder_names(folder_ids)
             for fid in folder_ids:
-                self._list_photos_in_subtree(fid, all_files, seen, progress_callback)
+                self._list_photos_in_subtree(
+                    fid, folder_names.get(fid, ""), all_files, seen, progress_callback
+                )
         else:
             self._list_all_photos(all_files, progress_callback)
         return all_files
+
+    def _resolve_folder_names(self, folder_ids):
+        """Return {folder_id: name} for a list of node IDs."""
+        names = {}
+        for fid in folder_ids:
+            try:
+                r = self._api("GET", f"/nodes/{fid}", params={"asset": "ALL", "tempLink": "false"})
+                if r.status_code == 200:
+                    names[fid] = r.json().get("name", "")
+            except Exception:
+                names[fid] = ""
+        return names
 
     def _list_all_photos(self, all_files, progress_callback=None):
         params = {
@@ -136,9 +152,9 @@ class AmazonPhotosProvider(CloudProvider):
             except Exception:
                 break
 
-    def _list_photos_in_subtree(self, folder_id, all_files, seen, progress_callback=None):
+    def _list_photos_in_subtree(self, folder_id, folder_path, all_files, seen, progress_callback=None):
         """Recursively collect photos under a folder."""
-        # Recurse into child folders first
+        # Recurse into child folders, building the path as we go
         child_params = {
             "filters":  f"kind:FOLDER AND status:AVAILABLE AND parents:{folder_id}",
             "asset":    "ALL",
@@ -149,7 +165,9 @@ class AmazonPhotosProvider(CloudProvider):
             r = self._api("GET", "/nodes", params=child_params)
             if r.status_code == 200:
                 for node in r.json().get("data", []):
-                    self._list_photos_in_subtree(node["id"], all_files, seen, progress_callback)
+                    child_name = node.get("name", "")
+                    child_path = f"{folder_path}/{child_name}" if folder_path else child_name
+                    self._list_photos_in_subtree(node["id"], child_path, all_files, seen, progress_callback)
         except Exception:
             pass
 
@@ -169,7 +187,7 @@ class AmazonPhotosProvider(CloudProvider):
                 for node in data.get("data", []):
                     if node["id"] in seen:
                         continue
-                    cf = self._node_to_cloudfile(node)
+                    cf = self._node_to_cloudfile(node, folder_path=folder_path)
                     if cf:
                         seen.add(node["id"])
                         all_files.append(cf)
@@ -188,7 +206,7 @@ class AmazonPhotosProvider(CloudProvider):
         # the PHOTOS kind filter which is more reliable
         return "*"
 
-    def _node_to_cloudfile(self, node):
+    def _node_to_cloudfile(self, node, folder_path=""):
         """Convert an Amazon Drive node dict to a CloudFile."""
         props = node.get("contentProperties", {})
         mime = props.get("contentType", "")
@@ -224,6 +242,7 @@ class AmazonPhotosProvider(CloudProvider):
             created_time=created,
             modified_time=modified,
             thumbnail_url=thumb_url,
+            folder_path=folder_path,
         )
 
     # ── Thumbnails ────────────────────────────────────────────────────────

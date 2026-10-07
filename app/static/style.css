@@ -41,6 +41,14 @@
     word-break: break-all;
 }
 
+.file-path {
+    display: block;
+    color: var(--pico-muted-color);
+    font-size: 0.78em;
+    word-break: break-all;
+    margin-bottom: 1px;
+}
+
 .duplicate-group {
     margin-bottom: 1.5rem;
 }

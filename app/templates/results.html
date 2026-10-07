@@ -36,6 +36,9 @@
                 <img src="{{ url_for('web.thumbnail', provider=file.provider, file_id=file.file_id) }}"
                      alt="{{ file.name }}" loading="lazy">
                 <div class="photo-info">
+                    {% if file.folder_path %}
+                    <small class="file-path">{{ file.folder_path }}/</small>
+                    {% endif %}
                     <strong>{{ file.name }}</strong><br>
                     <small>{{ file.size|filesize }} &middot;
                     {{ file.created_time[:10] if file.created_time else '' }} &middot;
@@ -71,6 +74,9 @@
                 <img src="{{ url_for('web.thumbnail', provider=file.provider, file_id=file.file_id) }}"
                      alt="{{ file.name }}" loading="lazy">
                 <div class="photo-info">
+                    {% if file.folder_path %}
+                    <small class="file-path">{{ file.folder_path }}/</small>
+                    {% endif %}
                     <strong>{{ file.name }}</strong><br>
                     <small>{{ file.size|filesize }} &middot;
                     {{ file.created_time[:10] if file.created_time else '' }} &middot;

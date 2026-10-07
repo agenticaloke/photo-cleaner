@@ -56,11 +56,29 @@ class GooglePhotosProvider(CloudProvider):
         """List photos from Google Photos (all or from specific albums)."""
         all_files = []
         if folder_ids:
+            # Resolve album IDs → names for path display
+            album_names = self._get_album_names(folder_ids)
             for album_id in folder_ids:
-                self._list_album_photos(album_id, all_files, progress_callback)
+                album_name = album_names.get(album_id, "")
+                self._list_album_photos(album_id, album_name, all_files, progress_callback)
         else:
             self._list_all_photos(all_files, progress_callback)
         return all_files
+
+    def _get_album_names(self, album_ids):
+        """Return {album_id: title} for a list of album IDs."""
+        names = {}
+        for album_id in album_ids:
+            try:
+                resp = requests.get(
+                    f"{PHOTOS_BASE}/albums/{album_id}",
+                    headers=self._headers, timeout=10,
+                )
+                if resp.status_code == 200:
+                    names[album_id] = resp.json().get("title", "")
+            except Exception:
+                names[album_id] = ""
+        return names
 
     def _list_all_photos(self, all_files, progress_callback=None):
         params = {"pageSize": 100}
@@ -86,7 +104,7 @@ class GooglePhotosProvider(CloudProvider):
                 break
             params = {"pageSize": 100, "pageToken": next_page}
 
-    def _list_album_photos(self, album_id, all_files, progress_callback=None):
+    def _list_album_photos(self, album_id, album_name, all_files, progress_callback=None):
         body = {"albumId": album_id, "pageSize": 100}
         while True:
             try:
@@ -101,7 +119,7 @@ class GooglePhotosProvider(CloudProvider):
             except Exception:
                 break
             for item in data.get("mediaItems", []):
-                cf = self._item_to_cloudfile(item)
+                cf = self._item_to_cloudfile(item, folder_path=album_name)
                 if cf:
                     all_files.append(cf)
             if progress_callback:
@@ -111,7 +129,7 @@ class GooglePhotosProvider(CloudProvider):
                 break
             body = {"albumId": album_id, "pageSize": 100, "pageToken": next_page}
 
-    def _item_to_cloudfile(self, item):
+    def _item_to_cloudfile(self, item, folder_path=""):
         mime = item.get("mimeType", "")
         if not mime.startswith("image/"):
             return None
@@ -141,7 +159,7 @@ class GooglePhotosProvider(CloudProvider):
             created_time=creation_time,
             modified_time=creation_time,
             thumbnail_url=thumb_url,
-            folder_path="",
+            folder_path=folder_path,
         )
 
     def download_thumbnail(self, file_id, temp_dir, thumbnail_url=None):
