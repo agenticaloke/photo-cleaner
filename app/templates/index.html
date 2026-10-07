@@ -480,7 +480,7 @@ a:hover { text-decoration: none; }
         </div>
 
         <!-- Amazon Photos -->
-        <div class="lp-provider-card amazon">
+        <div class="lp-provider-card amazon coming-soon">
             <div class="lp-provider-header">
                 <div class="lp-provider-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -490,23 +490,19 @@ a:hover { text-decoration: none; }
                     </svg>
                 </div>
                 <p class="lp-provider-name">Amazon Photos</p>
-                {% if amazon_connected %}<span class="lp-status-dot" title="Connected"></span>{% endif %}
+                <span class="lp-coming-soon-badge">Coming Soon</span>
             </div>
             <p class="lp-provider-desc">
                 Scan your Amazon Photos library for duplicates and free up Prime storage.
             </p>
-            {% if amazon_connected %}
-                <a href="{{ url_for('amazon_auth.logout') }}" class="lp-btn lp-btn-disconnect">Disconnect</a>
-            {% else %}
-                <a href="{{ url_for('amazon_auth.login') }}" class="lp-btn lp-btn-connect">Connect Amazon Photos</a>
-            {% endif %}
+            <div class="lp-btn-coming-soon">Integration in progress</div>
         </div>
 
     </div>
 </section>
 
 <!-- Scan CTA — shown only when connected -->
-{% if google_connected or gp_connected or ms_connected or amazon_connected %}
+{% if google_connected or gp_connected or ms_connected %}
 <div class="lp-cta">
     <div class="lp-cta-text">
         <h3>Ready to scan</h3>
