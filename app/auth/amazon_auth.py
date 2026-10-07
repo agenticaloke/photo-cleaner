@@ -7,7 +7,7 @@ amazon_auth_bp = Blueprint("amazon_auth", __name__, url_prefix="/auth/amazon")
 
 AUTH_URL   = "https://www.amazon.com/ap/oa"
 TOKEN_URL  = "https://api.amazon.com/auth/o2/token"
-SCOPES     = "profile amazondrive:read amazondrive:write"
+SCOPES     = "profile clouddrive:read_all clouddrive:write"
 
 
 @amazon_auth_bp.route("/login")
